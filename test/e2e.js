@@ -144,6 +144,21 @@ export async function e2eTests(t) {
       assert(/Herramienta LS, correcta/.test(r.stdout), 'resultado de herramienta como frase');
     });
 
+    await t('interfaz en inglés: ayuda, consola y errores', async (assert) => {
+      const enHome = path.join(work, '.home-en');
+      fs.mkdirSync(enHome, { recursive: true });
+      fs.writeFileSync(path.join(enHome, 'settings.json'), JSON.stringify({ language: 'en', onboarded: true }));
+      const en = { cwd, home: enHome };
+      const help = await runCli(['--help'], en);
+      assert(help.stdout.includes('Interactive console'), '--help en inglés');
+      m.push({ content: 'Hello!' });
+      const r = await runCli([...base], { ...en, input: '/help\n/exit\n' });
+      assert(r.stdout.includes('/help commands') && r.stdout.includes('Show commands and shortcuts'), 'consola en inglés');
+      assert(!r.stdout.includes('Muestra los comandos'), 'sin textos en español');
+      const err = await runCli(['-p', 'hi', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'x'], en);
+      assert(/Could not connect/.test(err.stderr), `error en inglés: ${err.stderr}`);
+    });
+
     await t('error de conexión con mensaje accionable', async (assert) => {
       const r = await runCli(['-p', 'hola', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'x'], opts);
       assert(r.status === 1, `código ${r.status}`);

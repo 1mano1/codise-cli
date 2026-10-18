@@ -2,6 +2,7 @@
 import { OpenAIClient, LLMError, safeFetch } from './openai.js';
 import { OllamaClient } from './ollama.js';
 import { resolveProvider, listProviderNames } from '../config.js';
+import { L } from '../i18n.js';
 
 export { LLMError };
 
@@ -33,8 +34,8 @@ export class RemoteClient {
       headers: { Authorization: `Bearer ${this.opts.apiKey || ''}` },
       signal: AbortSignal.timeout(8000),
     }, this.opts.label);
-    if (res.status === 401) throw new LLMError('Token inválido para la PC remota (revisa --token)', { status: 401 });
-    if (!res.ok) throw new LLMError(`La PC remota respondió HTTP ${res.status}`, { status: res.status });
+    if (res.status === 401) throw new LLMError(L('Token inválido para la PC remota (revisa --token)', 'Invalid token for the remote PC (check --token)'), { status: 401 });
+    if (!res.ok) throw new LLMError(L(`La PC remota respondió HTTP ${res.status}`, `The remote PC replied HTTP ${res.status}`), { status: res.status });
     return res.json();
   }
 
@@ -62,7 +63,7 @@ export class RemoteClient {
 
 export function createSingleClient(settings, providerName, model) {
   const provider = resolveProvider(settings, providerName);
-  if (!provider) throw new LLMError(`Proveedor desconocido: ${providerName}. Usa /provider para ver los disponibles.`);
+  if (!provider) throw new LLMError(L(`Proveedor desconocido: ${providerName}. Usa /setup o /provider.`, `Unknown provider: ${providerName}. Use /setup or /provider.`));
   const o = baseOpts(settings, provider, model);
   let client;
   if (provider.type === 'ollama') client = new OllamaClient(o);

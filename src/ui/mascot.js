@@ -4,6 +4,7 @@ import path from 'node:path';
 import { ROOT, HOME } from '../config.js';
 import { readJSON, writeJSON, listDirs } from '../util/fs.js';
 import { style, colorLevel, currentTheme } from './theme.js';
+import { L } from '../i18n.js';
 
 export function loadMascots() {
   const builtin = readJSON(path.join(ROOT, 'design', 'mascots.json'), {});
@@ -20,13 +21,13 @@ export function loadMascots() {
 }
 
 export function validateMascot(m) {
-  if (!m || typeof m !== 'object') return 'mascot.json vacío o inválido';
-  if (!Array.isArray(m.pixels) || !m.pixels.length) return 'falta "pixels" (lista de filas)';
-  if (!m.palette || typeof m.palette !== 'object') return 'falta "palette"';
+  if (!m || typeof m !== 'object') return L('mascot.json vacío o inválido', 'mascot.json is empty or invalid');
+  if (!Array.isArray(m.pixels) || !m.pixels.length) return L('falta "pixels" (lista de filas)', 'missing "pixels" (list of rows)');
+  if (!m.palette || typeof m.palette !== 'object') return L('falta "palette"', 'missing "palette"');
   const w = m.pixels[0].length;
-  if (m.pixels.some((r) => r.length !== w)) return 'todas las filas de "pixels" deben medir lo mismo';
-  if (w > 32 || m.pixels.length > 32) return 'máximo 32×32 píxeles';
-  for (const row of m.pixels) for (const ch of row) if (ch !== '.' && !m.palette[ch]) return `el carácter "${ch}" no está en la paleta`;
+  if (m.pixels.some((r) => r.length !== w)) return L('todas las filas de "pixels" deben medir lo mismo', 'all "pixels" rows must have the same length');
+  if (w > 32 || m.pixels.length > 32) return L('máximo 32×32 píxeles', 'maximum 32×32 pixels');
+  for (const row of m.pixels) for (const ch of row) if (ch !== '.' && !m.palette[ch]) return L(`el carácter "${ch}" no está en la paleta`, `character "${ch}" is not in the palette`);
   return null;
 }
 
@@ -90,5 +91,5 @@ export function renderMascot(m, state = 'idle') {
 export function mascotVerbs(m, settings) {
   if (settings.spinnerVerbs?.length) return settings.spinnerVerbs;
   if (m?.verbs?.length) return m.verbs;
-  return ['Pensando…', 'Trabajando…', 'Analizando…'];
+  return L(['Pensando…', 'Trabajando…', 'Analizando…'], ['Thinking…', 'Working…', 'Analyzing…']);
 }

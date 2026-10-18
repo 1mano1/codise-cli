@@ -1,5 +1,6 @@
 // Red: WebFetch y WebSearch. Desactivadas con --offline.
 import { truncateMiddle } from '../util/fs.js';
+import { L } from '../i18n.js';
 
 export function htmlToText(html) {
   return String(html)
@@ -36,8 +37,8 @@ export const WebFetch = {
   },
   async run(a, ctx) {
     let url;
-    try { url = new URL(a.url); } catch { throw new Error('URL inválida'); }
-    if (!/^https?:$/.test(url.protocol)) throw new Error('Solo se permiten URLs http o https');
+    try { url = new URL(a.url); } catch { throw new Error(L('URL inválida', 'Invalid URL')); }
+    if (!/^https?:$/.test(url.protocol)) throw new Error(L('Solo se permiten URLs http o https', 'Only http and https URLs are allowed'));
     const signal = AbortSignal.any ? AbortSignal.any([ctx.signal, AbortSignal.timeout(30000)].filter(Boolean)) : ctx.signal;
     const res = await fetch(url, { headers: { 'User-Agent': 'codice-cli', Accept: 'text/html,application/json,text/plain,*/*' }, signal, redirect: 'follow' });
     const type = res.headers.get('content-type') || '';
@@ -45,8 +46,8 @@ export const WebFetch = {
     const text = type.includes('html') ? htmlToText(body) : body;
     const max = Number(a.max_chars) || 20000;
     return {
-      content: `URL: ${res.url}\nEstado: ${res.status}\n\n${truncateMiddle(text, max)}`,
-      display: `HTTP ${res.status} · ${text.length} caracteres`,
+      content: `URL: ${res.url}\nStatus: ${res.status}\n\n${truncateMiddle(text, max)}`,
+      display: `HTTP ${res.status} · ${text.length} ${L('caracteres', 'characters')}`,
       isError: !res.ok,
     };
   },
@@ -77,6 +78,6 @@ export const WebSearch = {
       if (uddg) link = decodeURIComponent(uddg[1]);
       results.push(`- ${htmlToText(m[2])}\n  ${link}\n  ${htmlToText(m[3])}`);
     }
-    return { content: results.join('\n') || 'Sin resultados', display: `${results.length} resultados` };
+    return { content: results.join('\n') || 'No results', display: L(`${results.length} resultados`, `${results.length} results`) };
   },
 };

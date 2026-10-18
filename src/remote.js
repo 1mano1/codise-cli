@@ -71,10 +71,10 @@ export async function serve(o) {
   const port = Number(o.port) || saved.port || 8787;
   const host = o.host || '0.0.0.0';
 
-  ui.info('Buscando un servidor de modelos en esta PC…');
+  ui.info(L('Buscando un servidor de modelos en esta PC…', 'Looking for a model server on this computer…'));
   const backend = await detectBackend({ backend: o.backend, backendUrl: o['backend-url'] });
   if (!backend) {
-    ui.errorBox('No encontré Ollama, LM Studio, llama.cpp, vLLM ni Jan en esta PC', 'ningún puerto local respondió', 'Inicia tu servidor de modelos (p. ej. "ollama serve") o indica --backend-url http://localhost:PUERTO');
+    ui.errorBox(L('No encontré Ollama, LM Studio, llama.cpp, vLLM ni Jan en esta PC', 'No Ollama, LM Studio, llama.cpp, vLLM or Jan found on this computer'), null, L('Abre tu servidor de modelos (por ejemplo Ollama) o indica --backend-url http://localhost:PUERTO.', 'Start your model server (for example Ollama) or pass --backend-url http://localhost:PORT.'));
     return 1;
   }
   const target = new URL(backend.url);
@@ -86,7 +86,7 @@ export async function serve(o) {
     const ip = req.socket.remoteAddress?.replace('::ffff:', '') || '?';
     const log = (status) => ui.println(c.dim(`${new Date().toLocaleTimeString()}  ${ip.padEnd(15)} ${req.method} ${req.url.split('?')[0]} ${status} ${((Date.now() - t0) / 1000).toFixed(1)} s`));
     const f = failures.get(ip);
-    if (f && f.count >= 10 && Date.now() - f.since < 60000) { res.writeHead(429); res.end('Demasiados intentos'); return log(429); }
+    if (f && f.count >= 10 && Date.now() - f.since < 60000) { res.writeHead(429); res.end('Too many attempts'); return log(429); }
     const auth = req.headers.authorization || '';
     if (!safeEqual(auth.replace(/^Bearer\s+/i, ''), token)) {
       const cur = failures.get(ip) || { count: 0, since: Date.now() };
@@ -94,7 +94,7 @@ export async function serve(o) {
       cur.count++;
       failures.set(ip, cur);
       res.writeHead(401, { 'Content-Type': 'application/json' });
-      res.end('{"error":"token inválido"}');
+      res.end('{"error":"invalid token"}');
       return log(401);
     }
     if (req.url === '/codice/info') {
@@ -108,7 +108,7 @@ export async function serve(o) {
     let upstreamPath = null;
     if (backend.kind === 'ollama' && req.url.startsWith('/ollama/')) upstreamPath = req.url.slice('/ollama'.length);
     else if (backend.kind === 'openai' && req.url.startsWith('/openai/')) upstreamPath = req.url.slice('/openai'.length);
-    if (!upstreamPath) { res.writeHead(404); res.end('Ruta no encontrada'); return log(404); }
+    if (!upstreamPath) { res.writeHead(404); res.end('Not found'); return log(404); }
     const headers = { ...req.headers };
     delete headers.authorization;
     delete headers.host;
@@ -119,7 +119,7 @@ export async function serve(o) {
     });
     upstream.on('error', (e) => {
       if (!res.headersSent) res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: `backend no disponible: ${e.message}` }));
+      res.end(JSON.stringify({ error: `backend unavailable: ${e.message}` }));
       log(502);
     });
     // si el cliente se desconecta antes de terminar, se corta la generación en el backend
@@ -134,19 +134,19 @@ export async function serve(o) {
   const scheme = tls ? 'https' : 'http';
   const addrs = lanAddresses();
   const lines = [
-    `${c.dim('backend    ')}${c.primary(backend.kind === 'ollama' ? 'Ollama' : 'OpenAI-compatible')} ${c.muted(backend.url)} · ${backend.models.length} modelos`,
-    `${c.dim('escuchando ')}${scheme}://${host}:${port}`,
-    ...addrs.map((a) => `${c.dim(a.tailscale ? 'tailscale  ' : 'red local  ')}${c.info(`${scheme}://${a.address}:${port}`)}`),
+    `${c.dim('backend    ')}${c.primary(backend.kind === 'ollama' ? 'Ollama' : 'OpenAI-compatible')} ${c.muted(backend.url)} · ${backend.models.length} ${L('modelos', 'models')}`,
+    `${c.dim(L('escuchando ', 'listening  '))}${scheme}://${host}:${port}`,
+    ...addrs.map((a) => `${c.dim(a.tailscale ? 'tailscale  ' : L('red local  ', 'local net  '))}${c.info(`${scheme}://${a.address}:${port}`)}`),
     `${c.dim('token      ')}${c.soft(token)}`,
   ];
   ui.box(lines, { title: c.accent('Códice serve', { bold: true }) });
   const best = addrs.find((a) => a.tailscale) || addrs[0];
-  ui.println(c.primary('En tu laptop ejecuta:', { bold: true }));
-  ui.println(`  ${c.accent(`codice connect ${scheme}://${best ? best.address : 'IP-DE-ESTA-PC'}:${port} --token ${token} --name pc-casa`)}`);
+  ui.println(c.primary(L('En tu laptop ejecuta:', 'On your laptop run:'), { bold: true }));
+  ui.println(`  ${c.accent(`codice connect ${scheme}://${best ? best.address : L('IP-DE-ESTA-PC', 'THIS-PC-IP')}:${port} --token ${token} --name ${L('pc-casa', 'home-pc')}`)}`);
   ui.println('');
-  ui.warn('No abras este puerto a internet. Para usarlo fuera de casa usa Tailscale, ZeroTier o una VPN.');
-  if (!tls) ui.hint('Para cifrar el tráfico en la red local usa --cert y --key (HTTPS).');
-  ui.hint('Ctrl+C para detener.');
+  ui.warn(L('No abras este puerto a internet. Para usarlo fuera de casa usa Tailscale, ZeroTier o una VPN.', 'Do not expose this port to the internet. To use it away from home, use Tailscale, ZeroTier or a VPN.'));
+  if (!tls) ui.hint(L('Para cifrar el tráfico en la red local usa --cert y --key (HTTPS).', 'To encrypt traffic on your local network use --cert and --key (HTTPS).'));
+  ui.hint(L('Ctrl+C para detener.', 'Ctrl+C to stop.'));
   await new Promise((resolve) => {
     const stop = () => { server.close(); resolve(); };
     process.once('SIGINT', stop);
@@ -160,7 +160,7 @@ export async function connect(args, o, rt) {
   const url = args[0];
   const token = o.token && o.token !== true ? String(o.token) : '';
   const name = o.name && o.name !== true ? String(o.name) : 'pc-remota';
-  if (!url || !token) { console.error('Uso: codice connect http://IP:8787 --token TOKEN [--name pc-casa] [--model modelo]'); return 2; }
+  if (!url || !token) { console.error(L('Uso: codice connect http://IP:8787 --token TOKEN [--name pc-casa] [--model modelo]', 'Usage: codice connect http://IP:8787 --token TOKEN [--name home-pc] [--model model]')); return 2; }
   const client = new RemoteClient({ baseUrl: url, apiKey: token, label: name });
   let info;
   try {
@@ -170,15 +170,15 @@ export async function connect(args, o, rt) {
     return 1;
   }
   rt.save(`providers.${name}`, { type: 'codice', baseUrl: url.replace(/\/+$/, ''), apiKey: token, label: `${name} (${info.host})` });
-  ui.success(`Conectado a ${info.host} · backend ${info.backend} · ${info.models.length} modelos`);
+  ui.success(L(`Conectado a ${info.host} · ${info.models.length} modelos`, `Connected to ${info.host} · ${info.models.length} models`));
   for (const m of info.models.slice(0, 15)) ui.println(`  ${c.dim('·')} ${m}`);
   const model = o.model && o.model !== true ? String(o.model) : info.models.find((m) => /coder|code/i.test(m)) || info.models[0];
   if (o.default !== false) {
     rt.save('provider', name);
     if (model) rt.save('model', model);
-    ui.success(`Proveedor por defecto: ${name}${model ? ` · modelo ${model}` : ''}`);
+    ui.success(L(`Proveedor por defecto: ${name}${model ? ` · modelo ${model}` : ''}`, `Default provider: ${name}${model ? ` · model ${model}` : ''}`));
   }
-  ui.hint(`Si la PC no está disponible, configura un respaldo: codice config set fallback '["ollama:qwen2.5-coder:7b"]'`);
+  ui.hint(L(`Si la PC no está disponible, configura un respaldo: codice config set fallback '["ollama:qwen2.5-coder:3b"]'`, `If the PC is unavailable, set a fallback: codice config set fallback '["ollama:qwen2.5-coder:3b"]'`));
   return 0;
 }
 
@@ -231,27 +231,27 @@ export async function bench(args, o, rt) {
     try {
       models = (await rt.createClient({ model: rt.settings.model || 'x' }).listModels()).map((m) => m.id);
     } catch (e) {
-      ui.errorBox(`No se pudo conectar con ${provider}`, e.message, 'Revisa /provider o /doctor');
+      ui.errorBox(L(`No pude conectar con ${provider}`, `Could not connect to ${provider}`), e.message, L('Revisa la conexión con /setup o /doctor.', 'Check the connection with /setup or /doctor.'));
       return 1;
     }
   }
-  if (!models.length) { ui.warn('No hay modelos para medir.'); return 1; }
-  ui.println(c.primary(`Benchmark en ${provider} · ${models.length} modelo${models.length === 1 ? '' : 's'}`, { bold: true }));
-  ui.println(c.dim(`${'modelo'.padEnd(34)}${'1er token'.padEnd(12)}${'tokens/s'.padEnd(11)}herramientas`));
+  if (!models.length) { ui.warn(L('No hay modelos para medir.', 'No models to measure.')); return 1; }
+  ui.println(c.primary(`Benchmark · ${provider} · ${models.length} ${L('modelos', 'models')}`, { bold: true }));
+  ui.println(c.dim(`${L('modelo', 'model').padEnd(34)}${L('1er token', '1st token').padEnd(12)}${'tokens/s'.padEnd(11)}${L('herramientas', 'tools')}`));
   const modesFile = path.join(HOME, 'tool-modes.json');
   const modes = readJSON(modesFile, {});
   for (const model of models) {
-    rt.spinner.start(`Midiendo ${model}…`);
+    rt.spinner.start(L(`Midiendo ${model}…`, `Measuring ${model}…`));
     const r = await benchModel(rt.settings, provider, model);
     rt.spinner.stop();
     if (r.error) { ui.println(`${model.padEnd(34)}${c.error(`✗ ${r.error.slice(0, 60)}`)}`); continue; }
-    const tools = r.tools === 'nativas' ? c.success('● nativas') : r.tools === 'prompt' ? c.warning('◇ modo prompt') : c.error('✗ no');
+    const tools = r.tools === 'nativas' ? c.success(L('● nativas', '● native')) : r.tools === 'prompt' ? c.warning(L('◇ modo prompt', '◇ prompt mode')) : c.error('✗ no');
     ui.println(`${style(model.padEnd(34), { fg: 'text/primary' })}${c.muted(`${(r.ttft / 1000).toFixed(2)} s`.padEnd(12))}${c.soft((r.tps ? r.tps.toFixed(1) : '?').padEnd(11))}${tools}`);
     if (r.tools === 'prompt') modes[model] = 'prompt';
     if (r.tools === 'nativas') modes[model] = 'native';
   }
   writeJSON(modesFile, modes);
-  ui.hint('El modo de herramientas detectado se guarda para usarlo automáticamente.');
+  ui.hint(L('El modo de herramientas detectado se guarda para usarlo automáticamente.', 'The detected tool mode is saved and used automatically.'));
   return 0;
 }
 

@@ -1,5 +1,6 @@
 // Cliente para APIs compatibles con OpenAI (LM Studio, llama.cpp, vLLM, Jan, OpenRouter, OpenAI, Groq…).
 import { sse } from './stream.js';
+import { L } from '../i18n.js';
 
 export class LLMError extends Error {
   constructor(message, { status = 0, body = '', network = false, toolsUnsupported = false } = {}) {
@@ -21,7 +22,7 @@ export async function safeFetch(url, init, label) {
   } catch (e) {
     if (e.name === 'AbortError') throw e;
     const cause = e.cause?.code || e.cause?.message || e.message;
-    throw new LLMError(`No se pudo conectar con ${label} (${cause})`, { network: true });
+    throw new LLMError(L(`No se pudo conectar con ${label} (${cause})`, `Could not connect to ${label} (${cause})`), { network: true });
   }
 }
 
@@ -45,7 +46,7 @@ export class OpenAIClient {
 
   async listModels() {
     const res = await safeFetch(`${this.baseUrl}/models`, { headers: this.headers(), signal: AbortSignal.timeout(8000) }, this.label);
-    if (!res.ok) throw new LLMError(`HTTP ${res.status} al listar modelos`, { status: res.status, body: await res.text() });
+    if (!res.ok) throw new LLMError(L(`HTTP ${res.status} al listar modelos`, `HTTP ${res.status} while listing models`), { status: res.status, body: await res.text() });
     const j = await res.json();
     return (j.data || j.models || []).map((m) => ({ id: m.id || m.name, size: m.size || null }));
   }

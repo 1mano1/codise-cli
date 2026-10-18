@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { sse } from './llm/stream.js';
 import { VERSION } from './config.js';
+import { L } from './i18n.js';
 
 const PROTOCOL = '2025-06-18';
 
@@ -52,7 +53,7 @@ class StdioTransport {
       this.proc.once('error', reject);
     });
     this.proc.on('exit', (code) => {
-      for (const { reject } of this.pending.values()) reject(new Error(`El servidor MCP terminó (código ${code}). ${this.stderr.trim().split('\n').pop() || ''}`));
+      for (const { reject } of this.pending.values()) reject(new Error(L(`El servidor MCP terminó (código ${code}). ${this.stderr.trim().split('\n').pop() || ''}`, `The MCP server exited (code ${code}). ${this.stderr.trim().split('\n').pop() || ''}`)));
       this.pending.clear();
       this.exited = true;
     });
@@ -80,8 +81,8 @@ class StdioTransport {
 
   request(msg, timeout) {
     return new Promise((resolve, reject) => {
-      if (this.exited) return reject(new Error('El servidor MCP no está en ejecución'));
-      const t = setTimeout(() => { this.pending.delete(msg.id); reject(new Error(`Tiempo de espera agotado (${msg.method})`)); }, timeout);
+      if (this.exited) return reject(new Error(L('El servidor MCP no está en ejecución', 'The MCP server is not running')));
+      const t = setTimeout(() => { this.pending.delete(msg.id); reject(new Error(L(`Tiempo de espera agotado (${msg.method})`, `Timed out (${msg.method})`))); }, timeout);
       this.pending.set(msg.id, { resolve: (v) => { clearTimeout(t); resolve(v); }, reject: (e) => { clearTimeout(t); reject(e); } });
       this.write(msg);
     });
@@ -128,7 +129,7 @@ class HttpTransport {
         } catch { /* evento no JSON */ }
       }
     } else reply = await res.json();
-    if (!reply) throw new Error('Respuesta MCP vacía');
+    if (!reply) throw new Error(L('Respuesta MCP vacía', 'Empty MCP response'));
     if (reply.error) throw new Error(reply.error.message || 'Error MCP');
     return reply.result;
   }
@@ -162,7 +163,7 @@ export class McpClient {
     this.transport.onRequest = (msg) => {
       if (msg.method === 'ping') return {};
       if (msg.method === 'roots/list') return { roots: [{ uri: pathToFileURL(this.cwd).href, name: 'workspace' }] };
-      throw new Error(`Método no soportado: ${msg.method}`);
+      throw new Error(`Method not supported: ${msg.method}`);
     };
     try {
       await this.transport.start();
@@ -198,7 +199,7 @@ export class McpClient {
 
   async callTool(name, args, signal) {
     const p = this.request('tools/call', { name, arguments: args });
-    const r = signal ? await Promise.race([p, new Promise((_, rej) => signal.addEventListener('abort', () => rej(Object.assign(new Error('Interrumpido'), { name: 'AbortError' })), { once: true }))]) : await p;
+    const r = signal ? await Promise.race([p, new Promise((_, rej) => signal.addEventListener('abort', () => rej(Object.assign(new Error(L('Interrumpido', 'Interrupted')), { name: 'AbortError' })), { once: true }))]) : await p;
     const parts = (r.content || []).map((c) => {
       if (c.type === 'text') return c.text;
       if (c.type === 'resource') return c.resource?.text || `[recurso ${c.resource?.uri}]`;

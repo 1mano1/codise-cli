@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../config.js';
+import { L } from '../i18n.js';
 
 const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'design', 'themes.json'), 'utf8'));
 delete raw.$comment;
@@ -101,7 +102,7 @@ export function validateContrast(tokens) {
   for (const fg of TEXT_TOKENS) {
     for (const bg of ['bg/base', 'bg/surface', 'bg/elevated']) {
       const r = contrast(tokens[fg], tokens[bg]);
-      if (r < 4.5) warnings.push(`${fg} sobre ${bg}: ${r.toFixed(2)}:1 (mínimo 4.5:1)`);
+      if (r < 4.5) warnings.push(L(`${fg} sobre ${bg}: ${r.toFixed(2)}:1 (mínimo 4.5:1)`, `${fg} on ${bg}: ${r.toFixed(2)}:1 (minimum 4.5:1)`));
     }
   }
   return warnings;

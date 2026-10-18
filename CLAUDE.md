@@ -237,8 +237,8 @@ Hecho en esta rama (pedido del usuario tras probar v0.1.0):
 - Tema `auto` por defecto; `--base-url` se muestra con su dirección (no "cli").
 
 Pendiente:
-- Traducir al inglés lo que aún sale solo en español: `src/remote.js` (serve/bench), `src/subcommands.js`,
-  `src/print.js`, ayuda de `src/cli.js`, `src/tools/web.js`, mensajes de `src/mcp.js` y `src/plugins.js`.
+- ~~Traducir lo restante~~ hecho en `feat/i18n-remaining` (serve/connect/bench, subcomandos, `--help`, web, MCP, plugins,
+  PNG, mascotas, avisos de contraste). Prueba e2e del modo inglés incluida.
 - Probar el asistente y la consola en una terminal real (no se puede automatizar sin TTY).
 - Modelos del usuario: en la laptop no hay Ollama ni LM Studio. Solo hay en la caché de Hugging Face
   `Qwen2.5-0.5B-Instruct`, `Qwen2.5-3B-Instruct` e `Imanol11/qwen3b-int4-TinyQ` (formato transformers, requieren
