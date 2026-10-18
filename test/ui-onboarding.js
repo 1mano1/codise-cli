@@ -49,5 +49,5 @@ key('4', { name: '4' });
 await waitFor(() => vt.screen().includes('╰') && vt.screen().includes('Códice') && !vt.screen().includes('How do you want'));
 await sleep(150);
 shots.final = vt.screen();
-realWrite(`${JSON.stringify(shots)}\n`);
-process.exit(0);
+// esperar a que la salida se escriba completa (en macOS las tuberías son asíncronas)
+realWrite(`${JSON.stringify(shots)}\n`, () => process.exit(0));

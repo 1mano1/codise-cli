@@ -74,6 +74,6 @@ await sleep(150);
 shots.final = vt.screen();
 shots.cursor = vt.cursor();
 
-realWrite(`${JSON.stringify(shots)}\n`);
 await m.close();
-process.exit(0);
+// esperar a que la salida se escriba completa (en macOS las tuberías son asíncronas)
+realWrite(`${JSON.stringify(shots)}\n`, () => process.exit(0));
