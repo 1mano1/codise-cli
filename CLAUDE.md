@@ -262,14 +262,15 @@ Pendiente:
   acciones → se añadió detector de bucles y fragmento post-Edit (`fix/small-model-robustness`).
   Para código conviene 7B+ (o API).
 
-## Modelos locales gestionados por Códice (rama )
+## Modelos locales gestionados por Códice (rama `feat/local-models`)
 
 Pedido del usuario: no tener que "encender" el modelo aparte; elegirlo desde Códice y usarlo.
-- Proveedor  (por defecto): detecta GGUF en ,  del usuario, caché de Hugging Face,
+- Proveedor `local` (por defecto): detecta GGUF en `~/.codice/models`, `modelDirs` del usuario, caché de Hugging Face,
   LM Studio y Jan, más los modelos de **Ollama** (manifiesto → blob GGUF, sin necesitar Ollama encendido).
-- Al primer mensaje arranca  (puerto libre, , GPU con , respaldo a CPU) y lo apaga al salir
-  o al cambiar de modelo (). Si falta el motor, lo descarga (llama.cpp  fija).
-- : lista, , ,  (Hugging Face, verificación SHA-256,  para privados).
+- Al primer mensaje arranca `llama-server` (puerto libre, `--jinja`, GPU con `-ngl`, respaldo a CPU) y lo apaga al salir
+  o al cambiar de modelo (`src/local/engine.js`). Si falta el motor, lo descarga (llama.cpp `b11381`, versión fija).
+- `/models`: lista, `add-dir`, `dirs`, `download <usuario/repo>` (Hugging Face, verificación SHA-256, `HF_TOKEN` para privados).
 - Formatos no compatibles (safetensors, ONNX, MLX, GPTQ/AWQ) se detectan y se avisa que busquen la versión GGUF.
-- En la laptop del usuario:  → detecta ; respuesta completa
+- En la laptop del usuario: `modelDirs = ["C:/ProyectosIA_Imanol/modelos"]` → detecta `qwen3b-int4`; respuesta completa
   en ~32 s la primera vez (la mayor parte es procesar el prompt de sistema en la iGPU), el motor se apaga al salir.
+- Lección: no escribir texto con comillas invertidas dentro de `node -e "…"` en bash; usar el editor o archivos.
