@@ -206,3 +206,17 @@ Tablero "Accesibilidad (HCI)" en Figma. Reglas que el código debe cumplir:
 5. Personalización: `/theme`, `/config`, `/mascot` (render con medios bloques, estados, mascotas propias, PNG).
 6. Accesibilidad: modo lector de pantalla, `reduceMotion`, validación de contraste de temas propios.
 7. Pruebas, README, ejemplos (`examples/plugin-ejemplo`) y `npm link`.
+
+## Flujo de trabajo con git (pedido por el usuario)
+
+Repo: https://github.com/1mano1/codise-cli
+
+- `main`: estable, solo recibe merges desde `dev`.
+- `dev`: integración. Todo entra por **pull request** y se fusiona ahí.
+- Una rama por tema desde `dev`, con nombre en inglés: `feat/core`, `feat/terminal-ui`, `feat/llm-providers`,
+  `feat/tools`, `feat/agent-loop`, `feat/permissions-hooks-sessions`, `feat/extensions` (skills, agents,
+  commands, plugins, MCP), `feat/remote-serve`, `feat/customization`, `feat/accessibility`, `test/suite`, `docs/readme`.
+- **Commits y PR en inglés**, cortos, profesionales y al punto (Conventional Commits: `feat:`, `fix:`, `docs:`,
+  `test:`, `refactor:`, `chore:`). Nada de explicaciones largas ni tono de tutorial.
+- **Sin rastro de IA**: no agregar `Co-Authored-By` de Claude ni "Generated with Claude Code" en commits ni PR.
+- PR → `dev` con resumen breve y cómo se probó; se fusiona y se borra la rama.
