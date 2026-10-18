@@ -118,7 +118,7 @@ export class OpenAIClient {
       content,
       reasoning,
       toolCalls: calls.filter((x) => x && x.name),
-      usage: usage ? { input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 } : null,
+      usage: usage ? { input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0, cached: usage.prompt_tokens_details?.cached_tokens || 0 } : null,
       finish,
     };
   }

@@ -188,7 +188,7 @@ async function onboardingSteps(runtime, input) {
   else if (how === 'api') ok = await setupApi(runtime, input);
   else if (how === 'remote') ok = await setupRemote(runtime, input);
   runtime.save('onboarded', true);
-  clear();
+  ui.clearScreen({ bottom: true }); // la caja de escritura vuelve, pegada al fondo
   if (!ok) ui.hint(L('Puedes configurar el modelo cuando quieras con /setup.', 'You can set up a model anytime with /setup.'));
   return ok;
 }

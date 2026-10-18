@@ -373,8 +373,13 @@ export const BUILTIN_COMMANDS = {
         const tps = m.ms ? (m.output / (m.ms / 1000)).toFixed(1) : '?';
         ui.println(`  ${c.soft(model.padEnd(36))}${c.muted(`${formatTokens(m.input + m.output)} tokens · ${tps} tok/s`)}`);
       }
+      if (u.cached) ui.println(`  ${c.muted(L(`de la entrada, ${formatTokens(u.cached)} salieron de la caché (no se volvieron a procesar)`, `of the input, ${formatTokens(u.cached)} came from cache (not processed again)`))}`);
       const cloud = resolveProvider(runtime.settings, runtime.settings.provider)?.cloud;
-      ui.hint(cloud ? L('Proveedor en la nube: revisa la tarifa de tu proveedor.', 'Cloud provider: check your provider pricing.') : L('Modelo local o PC propia: costo de nube $0.', 'Local model or your own PC: $0 cloud cost.'));
+      ui.hint(L(
+        `¿Por qué la entrada es grande? Cada petición reenvía las instrucciones y la conversación (el modelo no recuerda entre peticiones), y cada paso con herramientas es una petición. ${runtime.isLean() ? 'Modo ligero activo: instrucciones recortadas.' : 'Activa el modo ligero en /config para reducirlo.'}`,
+        `Why is input large? Each request re-sends the instructions and the conversation (the model has no memory between requests), and each tool step is a request. ${runtime.isLean() ? 'Lean mode on: trimmed instructions.' : 'Enable lean mode in /config to reduce it.'}`,
+      ));
+      ui.hint(cloud ? L('Proveedor en la nube: revisa la tarifa de tu proveedor.', 'Cloud provider: check your provider pricing.') : L('Modelo local o PC propia: costo de nube $0 (solo tiempo de cómputo).', 'Local model or your own PC: $0 cloud cost (compute time only).'));
     },
   },
 

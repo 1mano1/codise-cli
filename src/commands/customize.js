@@ -207,7 +207,7 @@ async function configPanel(ctx) {
       { key: 'spinnerVerbs', label: L('Verbos del spinner', 'Spinner verbs'), value: s.spinnerVerbs?.length ? s.spinnerVerbs.join(', ') : L('los de la mascota', "the mascot's") },
       { key: 'autoCompact', label: L('Autocompactar contexto', 'Auto-compact context'), value: s.autoCompact ? `${Math.round(s.autoCompact * 100)} %` : 'no' },
       { key: 'contextWindow', label: L('Ventana de contexto', 'Context window'), value: `${s.contextWindow}` },
-      { key: 'lean', label: L('Modo ligero (modelos pequeños)', 'Lean mode (small models)'), value: yes(s.lean) },
+      { key: 'lean', label: L('Modo ligero (menos tokens)', 'Lean mode (fewer tokens)'), value: s.lean === true || s.lean === false ? yes(s.lean) : L(`auto (${runtime.isLean() ? 'activo' : 'inactivo'})`, `auto (${runtime.isLean() ? 'on' : 'off'})`) },
       { key: 'notifications', label: L('Sonido al terminar', 'Sound when done'), value: yes(s.notifications) },
       { key: 'offline', label: L('Modo offline', 'Offline mode'), value: yes(s.offline) },
       { key: 'accessibility', label: L('Accesibilidad…', 'Accessibility…'), value: '' },
@@ -226,7 +226,8 @@ async function configPanel(ctx) {
       case 'theme': await themeCommand('', ctx); break;
       case 'mascot': await mascotCommand('', ctx); break;
       case 'accessibility': await accessibilityCommand('', ctx); break;
-      case 'showThinking': case 'lean': case 'notifications': case 'offline': toggle(key, s[key]); break;
+      case 'lean': runtime.save('lean', s.lean === true ? false : s.lean === false ? 'auto' : true, scope); break; // sí → no → auto
+      case 'showThinking': case 'notifications': case 'offline': toggle(key, s[key]); break;
       case 'spinnerVerbs': {
         const v = await repl.input.question(`${c.accent('›')} ${L('Verbos separados por coma (vacío = los de la mascota)', 'Comma-separated verbs (empty = mascot verbs)')}: `);
         runtime.save(key, v?.trim() ? v.split(',').map((x) => x.trim()).filter(Boolean).map((x) => (x.endsWith('…') ? x : `${x}…`)) : [], scope);

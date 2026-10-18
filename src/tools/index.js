@@ -8,10 +8,27 @@ import { TodoWrite, Task, Skill, AskUser, ExitPlanMode } from './meta.js';
 export const BUILTIN_TOOLS = [Read, Write, Edit, LS, Glob, Grep, Bash, WebFetch, WebSearch, TodoWrite, Task, Skill, AskUser, ExitPlanMode];
 
 // Descripción para el modelo (algunas herramientas la generan según el estado).
+// lean (modelos pequeños/locales): descripción de una sola frase y parámetros sin textos de ayuda.
 export function toolSpec(tool, runtime, { lean = false } = {}) {
   let description = tool.describe ? tool.describe(runtime) : tool.description;
-  if (lean) description = description.split('\n\n')[0];
-  return { name: tool.name, description, parameters: tool.parameters };
+  if (!lean) return { name: tool.name, description, parameters: tool.parameters };
+  const [first, ...rest] = description.split('\n\n');
+  description = first.split(/(?<=\.)\s/)[0];
+  // la lista de agentes o skills disponibles se conserva: el modelo la necesita para elegir
+  const list = rest.find((p) => /^Available (agents|skills)/.test(p));
+  if (list) description += `\n\n${list.split('\n').map((l) => (l.length > 70 ? `${l.slice(0, 67).replace(/\s+\S*$/, '')}…` : l)).join('\n')}`;
+  return { name: tool.name, description, parameters: stripDescriptions(tool.parameters) };
+}
+
+function stripDescriptions(schema) {
+  if (!schema || typeof schema !== 'object') return schema;
+  if (Array.isArray(schema)) return schema.map(stripDescriptions);
+  const out = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (k === 'description' && typeof v === 'string') continue;
+    out[k] = typeof v === 'object' ? stripDescriptions(v) : v;
+  }
+  return out;
 }
 
 // Valida argumentos requeridos y tipos básicos contra el JSON Schema.

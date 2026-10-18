@@ -31,7 +31,10 @@ export function startMockLLM({ script = [], models = ['mock-coder:7b', 'mock-sma
     res.writeHead(200, { 'Content-Type': 'text/event-stream' });
     const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
     if (step.reasoning) send({ choices: [{ index: 0, delta: { reasoning_content: step.reasoning } }] });
-    for (const piece of chunks(step.content || '')) send({ choices: [{ index: 0, delta: { content: piece } }] });
+    for (const piece of chunks(step.content || '')) {
+      send({ choices: [{ index: 0, delta: { content: piece } }] });
+      if (step.delay) await new Promise((r) => setTimeout(r, step.delay)); // streaming lento para probar la animación
+    }
     calls.forEach((c, i) => {
       const args = JSON.stringify(c.args);
       send({ choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: c.id, type: 'function', function: { name: c.name, arguments: '' } }] } }] });

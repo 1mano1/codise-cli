@@ -18,9 +18,7 @@ process.chdir(proj);
 
 // terminal falsa
 Object.assign(process.stdout, { isTTY: true, columns: 90, rows: 34 });
-process.stdout.write = (d) => { vt.write(d); return true; };
-process.stdout.on = () => process.stdout;
-process.stdout.off = () => process.stdout;
+process.stdout.write = (d, cb) => { vt.write(d); if (typeof cb === 'function') cb(); return true; };
 process.stdin.isTTY = true;
 process.stdin.setRawMode = () => {};
 
@@ -35,6 +33,7 @@ const m = await startMockLLM({ script: [
   { content: 'Hola, soy Códice. ¿En qué te ayudo?' },
   { toolCalls: [{ name: 'Bash', args: { command: "echo 'const memory = []; const add = (key, value) => { memory[key] = value; }; module.exports = { add };' > memory.js", description: 'Crea memory.js' } }] },
   { content: 'Listo: creé memory.js.' },
+  { content: 'Este es un texto largo que llega poco a poco para comprobar que la animación se ve fluida.', delay: 60 },
 ] });
 
 const { Runtime } = await import('../src/runtime.js');
@@ -73,6 +72,22 @@ await waitFor(() => vt.screen().includes('Listo: creé memory.js.'));
 await sleep(150);
 shots.final = vt.screen();
 shots.cursor = vt.cursor();
+
+// texto que llega poco a poco: debe verse a medias mientras llega
+await type('otro');
+enter();
+await waitFor(() => vt.screen().includes('Este es un') && !vt.screen().includes('fluida.'), 8000);
+shots.streaming = vt.screen();
+await waitFor(() => vt.screen().includes('fluida.'), 15000);
+await sleep(200);
+shots.streamFin = vt.screen();
+
+// ventana más angosta: todo se vuelve a dibujar al nuevo ancho
+process.stdout.columns = 60;
+vt.cols = 60;
+process.stdout.emit('resize');
+await sleep(400);
+shots.angosta = vt.screen();
 
 await m.close();
 // esperar a que la salida se escriba completa (en macOS las tuberías son asíncronas)

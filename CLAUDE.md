@@ -301,3 +301,20 @@ Criterios del diseño:
   la paleta "/" ocupa ese lugar al escribir comandos.
 - Spinner y diálogos de permiso justo ENCIMA de la caja; durante un diálogo la caja se atenúa.
 - Comandos largos completos en varias líneas; nada se desborda. Modo lector de pantalla: salida lineal sin cajas.
+
+## Pulido de la consola v2 (rama `fix/flicker-streaming-tokens`)
+
+Problemas reportados al probarla y solución:
+- **Parpadeo**: la zona viva ya no se borra y redibuja; cada cuadro se escribe de una vez con salida sincronizada
+  (`\x1b[?2026h`), cursor oculto y renglones sobrescritos (`\x1b[K`).
+- **Texto de golpe**: el renglón en curso se muestra en la zona viva palabra por palabra (`setStreamLines`) y un
+  suavizado revela las ráfagas a ritmo constante (`mainView` en `src/agent/agent.js`).
+- **No responsivo**: historial de lo impreso (`history` en `src/ui/output.js`); al redimensionar se limpia la pantalla
+  y se redibuja; bienvenida, diffs, cabeceras y mensajes del usuario son bloques que se recalculan (`outBlock`).
+  La mascota se oculta en ventanas de menos de 64 columnas.
+- **Caja siempre al fondo**: `anchorBottom()` empuja la zona viva al último renglón al iniciar y al redibujar.
+- **Tokens**: cada petición reenvía instrucciones + conversación y cada paso con herramientas es una petición.
+  Modo ligero `lean: 'auto'` (activo salvo en proveedores de nube): herramientas sin textos de ayuda → ~1,700 tokens
+  por petición en vez de ~2,500. La barra ya no muestra el total acumulado (engañoso); `/cost` lo explica e
+  incluye los tokens de caché.
+- Diff de archivos nuevos: las líneas vacías ya salen con número y `+`.

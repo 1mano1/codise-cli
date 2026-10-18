@@ -8,6 +8,7 @@ import { truncateMiddle, randomId } from '../util/fs.js';
 import { wildcardMatch } from '../util/glob.js';
 import * as ui from '../ui/output.js';
 import { L } from '../i18n.js';
+import { liveActive } from '../ui/live.js';
 
 const MAX_DEPTH = 2;
 const SLOW_TOOLS = new Set(['Bash', 'Task', 'WebFetch', 'WebSearch']);
@@ -19,18 +20,36 @@ export function abortError() {
 // ── Vistas: cómo se muestra el trabajo del agente ────────────────
 export function mainView(runtime) {
   const spinner = runtime.spinner;
-  let md = null, rs = null;
+  let md = null, rs = null, queue = '', pump = null;
   const verbs = () => runtime.spinnerVerbs();
   const pick = () => { const v = verbs(); return v[Math.floor(Math.random() * v.length)]; };
   return {
     thinking() { spinner.start(pick()); },
-    text(t) { if (!md) { spinner.stop(); md = new ui.MarkdownStream(); } md.push(t); },
+    text(t) {
+      if (!md) { spinner.stop(); md = new ui.MarkdownStream(); }
+      if (!liveActive()) { md.push(t); return; }
+      // revela el texto a ritmo constante: los modelos mandan ráfagas y se vería a saltos
+      queue += t;
+      if (!pump) {
+        pump = setInterval(() => {
+          const n = Math.max(2, Math.ceil(queue.length / 8));
+          md?.push(queue.slice(0, n));
+          queue = queue.slice(n);
+          if (!queue) { clearInterval(pump); pump = null; }
+        }, 16);
+      }
+    },
     reasoning(r) {
       if (!runtime.settings.showThinking) return;
       if (!rs) { spinner.stop(); rs = ui.reasoningWriter(); }
       rs.push(r);
     },
-    endTurn() { rs?.flush(); md?.flush(); md = null; rs = null; spinner.stop(); },
+    endTurn() {
+      if (pump) { clearInterval(pump); pump = null; }
+      if (queue && md) md.push(queue);
+      queue = '';
+      rs?.flush(); md?.flush(); md = null; rs = null; spinner.stop();
+    },
     tokens(n) { spinner.addTokens(n); },
     toolStart(name, summary) {
       spinner.stop();
@@ -169,7 +188,7 @@ export class Agent {
     const client = this.client();
     let mode = rt.toolModeFor(client.model);
     for (let attempt = 0; attempt < 2; attempt++) {
-      const specs = tools.map((t) => toolSpec(t, rt, { lean: rt.settings.lean }));
+      const specs = tools.map((t) => toolSpec(t, rt, { lean: rt.isLean() }));
       const system = buildSystemPrompt(rt, { agent: this, tools: specs, toolMode: mode, model: client.model });
       let messages = [{ role: 'system', content: system }, ...this.messages];
       if (mode === 'prompt') messages = toPromptMessages(messages);

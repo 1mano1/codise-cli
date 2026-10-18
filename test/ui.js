@@ -58,6 +58,24 @@ export async function uiTests(t) {
     assert(shots.final.includes('Listo: creé memory.js.') && !shots.final.includes('Permiso requerido'), 'el diálogo desaparece al responder');
   });
 
+  await t('consola v2: la caja va pegada al fondo desde el inicio', async (assert) => {
+    assert(shots.inicio.split('\n').length >= 34, 'la zona viva se empuja al último renglón de la terminal');
+  });
+
+  await t('consola v2: el texto aparece mientras llega (no de golpe)', async (assert) => {
+    assert(shots.streaming.includes('Este es un') && !shots.streaming.includes('fluida.'), 'se ve el texto a medias mientras llega');
+    assert(shots.streamFin.includes('se ve fluida.'), 'el texto termina completo');
+    assert(shots.streamFin.split('\n').filter((l) => l.includes('Este es un texto')).length === 1, 'sin duplicados al terminar');
+  });
+
+  await t('consola v2: responsiva al cambiar el ancho de la terminal', async (assert) => {
+    const lines = shots.angosta.split('\n');
+    assert(lines.every((l) => [...l].length <= 60), 'nada excede el nuevo ancho');
+    assert(shots.angosta.includes('› hola') && shots.angosta.includes('› otro'), 'se conservan los mensajes del usuario');
+    assert(!shots.angosta.includes('▀▀▀'), 'la mascota se oculta en ventanas angostas');
+    assert(lines.filter((l) => l.trim()).at(-1).includes('shift+tab'), 'la caja y el estado siguen al fondo');
+  });
+
   const onb = await runHarness('ui-onboarding.js');
   await t('consola v2: asistente de inicio sin caja ni barra y con nombres traducidos', async (assert) => {
     assert(!onb.error, onb.error);

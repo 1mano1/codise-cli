@@ -3,7 +3,7 @@ import { c, style, stripAnsi, visibleWidth, colorLevel } from './theme.js';
 import { renderMascot } from './mascot.js';
 import { formatDuration, formatTokens } from '../util/fs.js';
 import { L } from '../i18n.js';
-import { liveActive, writeAbove, eraseLive, drawLive, setLiveSpinner, resetLive } from './live.js';
+import { liveActive, writeAbove, eraseLive, drawLive, setLiveSpinner, resetLive, rewriteLineAbove, setStreamLines, anchorBottom } from './live.js';
 
 const opts ={ screenReader: false, reduceMotion: false, stream: process.stdout };
 let lastChar = '\n';
@@ -23,11 +23,51 @@ export function width() {
 
 let activeSpinner = null;
 
+// Historial de lo impreso con la caja activa: al cambiar el tamaño de la terminal se limpia la pantalla y se
+// vuelve a dibujar. Los bloques que dependen del ancho (bienvenida, diffs) se guardan como funciones.
+const history = [];
+const MAX_HISTORY = 400;
+
+function record(entry) {
+  history.push(entry);
+  if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
+  return entry;
+}
+
+// Imprime un bloque que se recalcula al cambiar el ancho de la terminal.
+export function outBlock(render) {
+  const text = render();
+  if (!text) return;
+  if (liveActive() && opts.stream === process.stdout) {
+    record({ render });
+    writeAbove(text);
+    lastChar = '\n';
+    headerMark = null;
+    return;
+  }
+  out(text);
+}
+
+let resizeTimer = null;
+export function handleResize() {
+  if (!liveActive() || opts.screenReader) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    eraseLive();
+    process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+    anchorBottom(); // la caja sigue abajo; la conversación se vuelve a dibujar encima, al nuevo ancho
+    const text = history.map((e) => (e.render ? e.render() : e.text)).join('');
+    if (text) process.stdout.write(text.endsWith('\n') ? text : `${text}\n`);
+    drawLive();
+  }, 120);
+}
+
 // Escribe respetando la zona viva (caja de entrada) o el spinner: los borra, escribe y los vuelve a dibujar.
 export function out(s = '') {
   s = String(s);
   if (!s) return;
   if (liveActive() && opts.stream === process.stdout) {
+    record({ text: s.endsWith('\n') ? s : `${s}\n` });
     writeAbove(s);
     lastChar = '\n';
     headerMark = null;
@@ -109,13 +149,18 @@ export function errorBox(title, cause, action) {
   if (action && cause && process.env.CODICE_DEBUG) println(`  ${c.dim(cause)}`);
 }
 
-export function box(lines, { border = 'border/default', title = null, padding = 1, full = false } = {}) {
+export function box(lines, o = {}) {
   ensureNewline();
   if (opts.screenReader) {
-    if (title) println(stripAnsi(title));
+    if (o.title) println(stripAnsi(o.title));
     for (const l of lines) println(stripAnsi(l));
     return;
   }
+  out(boxString(lines, o)); // de una vez: sin parpadeo con la zona viva
+}
+
+// Devuelve el recuadro como texto (se recalcula con el ancho actual de la terminal).
+export function boxString(lines, { border = 'border/default', title = null, padding = 1, full = false } = {}) {
   const maxInner = width() - 4 - padding * 2;
   const rows = lines.flatMap((l) => (visibleWidth(l) > maxInner && !/\x1b/.test(l) ? wrap(l, maxInner) : [l]));
   // full: mismo ancho que la caja de escritura (alineados, diseño v2)
@@ -129,7 +174,7 @@ export function box(lines, { border = 'border/default', title = null, padding = 
     outLines.push(`${b('│')}${' '.repeat(padding)}${content}${' '.repeat(Math.max(0, pad))}${' '.repeat(padding)}${b('│')}`);
   }
   outLines.push(b(`╰${'─'.repeat(inner)}╯`));
-  out(`${outLines.join('\n')}\n`); // de una vez: sin parpadeo con la zona viva
+  return `${outLines.join('\n')}\n`;
 }
 
 // ── Banner de inicio ─────────────────────────────────────────────
@@ -166,36 +211,46 @@ export function banner({ version, model, provider, cwd, memory, mascot }) {
     return;
   }
   // Diseño v2: contenedor compacto con la mascota pequeña a la izquierda y la información a la derecha.
-  const pet = width() >= 60 ? renderMascot(mascot, 'idle') : [];
-  const petW = pet.length ? visibleWidth(pet[0]) : 0;
-  const lbl = (s) => c.dim(s.padEnd(9));
+  // Es responsivo: se recalcula con el ancho actual (al redimensionar se vuelve a dibujar) y en ventanas
+  // angostas la mascota se oculta y los textos se acortan.
   const home = process.env.USERPROFILE || process.env.HOME || '';
   const shortCwd = home && cwd.toLowerCase().startsWith(home.toLowerCase()) ? `~${cwd.slice(home.length)}` : cwd;
-  const info = [
-    `${c.accent('✻', { bold: true })} ${c.primary('Códice', { bold: true })}  ${c.dim(`v${version}`)}`,
-    `${lbl(L('modelo', 'model'))}${model ? `${c.soft(model, { bold: true })}  ${c.muted(`· ${provider}`)}` : c.warning(L('sin modelo — escribe /setup', 'no model — type /setup'))}`,
-    `${lbl(L('carpeta', 'folder'))}${c.info(shortCwd)}`,
-  ];
-  if (memory?.length) info.push(`${lbl(L('memoria', 'memory'))}${c.muted(memory.slice(0, 3).join(' · '))}`);
-  info.push(`${c.accent('/help')} ${c.dim(L('comandos', 'commands'))}${c.dim(' · ')}${c.accent('/models')} ${c.dim(L('modelo', 'model'))}${c.dim(' · ')}${c.accent('/theme')} ${c.dim(L('tema', 'theme'))}`);
-  const rows = Math.max(pet.length, info.length);
-  const offPet = Math.max(0, Math.floor((rows - pet.length) / 2));
-  const offInfo = Math.max(0, Math.floor((rows - info.length) / 2));
-  const lines = [];
-  for (let i = 0; i < rows; i++) {
-    const p = petW ? (pet[i - offPet] || ' '.repeat(petW)) : '';
-    lines.push(`${p}${petW ? '   ' : ''}${info[i - offInfo] || ''}`);
-  }
-  println('');
-  box(lines, { border: 'accent/primary', full: liveActive() });
+  const render = () => {
+    const cols = (opts.stream.columns || 80) - 1;
+    const pet = cols >= 64 ? renderMascot(mascot, 'idle') : [];
+    const petW = pet.length ? visibleWidth(pet[0]) : 0;
+    const narrow = cols < 48;
+    const lbl = (s) => (narrow ? '' : c.dim(s.padEnd(9)));
+    const info = [
+      `${c.accent('✻', { bold: true })} ${c.primary('Códice', { bold: true })}  ${c.dim(`v${version}`)}`,
+      `${lbl(L('modelo', 'model'))}${model ? `${c.soft(model, { bold: true })}${narrow ? '' : `  ${c.muted(`· ${provider}`)}`}` : c.warning(L('sin modelo — /setup', 'no model — /setup'))}`,
+      `${lbl(L('carpeta', 'folder'))}${c.info(shortCwd)}`,
+    ];
+    if (memory?.length && !narrow) info.push(`${lbl(L('memoria', 'memory'))}${c.muted(memory.slice(0, 3).join(' · '))}`);
+    info.push(narrow ? `${c.accent('/help')}` : `${c.accent('/help')} ${c.dim(L('comandos', 'commands'))}${c.dim(' · ')}${c.accent('/models')} ${c.dim(L('modelo', 'model'))}${c.dim(' · ')}${c.accent('/theme')} ${c.dim(L('tema', 'theme'))}`);
+    const rows = Math.max(pet.length, info.length);
+    const offPet = Math.max(0, Math.floor((rows - pet.length) / 2));
+    const offInfo = Math.max(0, Math.floor((rows - info.length) / 2));
+    const lines = [];
+    for (let i = 0; i < rows; i++) {
+      const p = petW ? (pet[i - offPet] || ' '.repeat(petW)) : '';
+      lines.push(`${p}${petW ? '   ' : ''}${info[i - offInfo] || ''}`);
+    }
+    return `\n${boxString(lines, { border: 'accent/primary', full: liveActive() })}`;
+  };
+  ensureNewline();
+  outBlock(render);
 }
 
 // Limpia la pantalla sin romper la zona viva (se vuelve a dibujar al pie).
-export function clearScreen() {
+// bottom: deja la zona viva pegada al fondo (para pantallas con caja); sin él, el texto empieza arriba (asistente).
+export function clearScreen({ bottom = false } = {}) {
   if (!process.stdout.isTTY || opts.screenReader) return;
   eraseLive();
   process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
   resetLive();
+  if (bottom) anchorBottom();
+  history.length = 0;
   lastChar = '\n';
   drawLive();
 }
@@ -207,6 +262,13 @@ function inline(s) {
     .replace(/\*\*([^*]+)\*\*/g, (_, x) => style(x, { bold: true, fg: 'text/primary' }))
     .replace(/(^|[\s(])\*([^*\s][^*]*)\*(?=[\s).,;:!?]|$)/g, (_, a, x) => a + style(x, { italic: true, fg: 'text/primary' }))
     .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, (_, t, u) => `${c.info(t)} ${c.dim(`(${u})`)}`);
+}
+
+// Redibuja la zona viva como mucho cada ~30 ms mientras llega texto (fluido sin saturar la terminal).
+let drawTimer = null;
+function scheduleDraw() {
+  if (drawTimer) return;
+  drawTimer = setTimeout(() => { drawTimer = null; drawLive(); }, 30);
 }
 
 export class MarkdownStream {
@@ -221,13 +283,30 @@ export class MarkdownStream {
     this.buf += text;
     let i;
     while ((i = this.buf.indexOf('\n')) >= 0) {
-      this.renderLine(this.buf.slice(0, i));
+      const line = this.buf.slice(0, i);
       this.buf = this.buf.slice(i + 1);
+      this.updateTail(false);
+      this.renderLine(line);
     }
+    this.updateTail(true);
+  }
+
+  // El renglón que aún se está escribiendo se ve en la zona viva, palabra por palabra (no aparece de golpe).
+  updateTail(schedule) {
+    if (!liveActive() || opts.screenReader || opts.stream !== process.stdout) return;
+    const part = this.buf;
+    if (!part || (!this.started && !part.trim())) { setStreamLines(null); if (schedule) scheduleDraw(); return; }
+    const cols = Math.max(20, (opts.stream.columns || 80) - 3);
+    const p = this.prefix;
+    const lines = wrap(part, cols).map((chunk) => (this.inCode ? `${p}${c.dim('│ ')}${c.muted(chunk)}` : `${p}${c.primary(inline(chunk))}`));
+    setStreamLines(lines);
+    if (schedule) scheduleDraw();
   }
 
   flush() {
+    setStreamLines(null);
     if (this.buf) this.renderLine(this.buf);
+    else drawLive();
     this.buf = '';
   }
 
@@ -357,8 +436,10 @@ function header(name, summary, state, indent = '') {
 export function toolStart(name, summary, { indent = '' } = {}) {
   ensureNewline();
   if (opts.screenReader || !opts.stream.isTTY) return;
-  out(`${header(name, summary, 'running', indent)}\n`);
-  headerMark = { name, summary, indent };
+  // la cabecera se recalcula al redimensionar (se corta al ancho actual) y cambia de estado al terminar
+  const st = { state: 'running' };
+  outBlock(() => `${header(name, summary, st.state, indent)}\n`);
+  headerMark = { name, summary, indent, st };
 }
 
 export function toolEnd(name, summary, { ok, text, indent = '' }) {
@@ -367,11 +448,10 @@ export function toolEnd(name, summary, { ok, text, indent = '' }) {
     return;
   }
   if (headerMark && headerMark.name === name && liveActive() && opts.stream === process.stdout && colorLevel() > 0) {
-    // la cabecera está justo encima de la zona viva: se borra la zona, se reescribe la cabecera y se redibuja
-    eraseLive();
-    opts.stream.write(`\x1b[1A\r\x1b[2K${header(name, summary, ok ? 'ok' : 'error', indent)}\n`);
+    // la cabecera está justo encima de la zona viva: se reescribe en el mismo cuadro (sin parpadeo)
+    headerMark.st.state = ok ? 'ok' : 'error';
+    rewriteLineAbove(header(name, summary, headerMark.st.state, indent));
     lastChar = '\n';
-    drawLive();
   } else if (headerMark && headerMark.name === name && opts.stream.isTTY && colorLevel() > 0) {
     const sp = activeSpinner?.timer ? activeSpinner : null;
     opts.stream.write(`${sp ? '\r\x1b[2K' : ''}\x1b[1A\r\x1b[2K${header(name, summary, ok ? 'ok' : 'error', indent)}\n`);
@@ -422,7 +502,8 @@ export function diffStats(oldText, newText) {
 
 // Devuelve las líneas del diff ya coloreadas (contexto de 2 líneas alrededor de cada cambio).
 export function diffLines(oldText, newText, { startLine = 1, maxLines = 24, indent = '  ' } = {}) {
-  const d = lcsDiff(String(oldText).split('\n'), String(newText).split('\n'));
+  // archivo nuevo: no hay líneas viejas (si no, las líneas vacías se emparejaban con "" y salían sin +)
+  const d = lcsDiff(oldText === '' ? [] : String(oldText).split('\n'), String(newText).split('\n'));
   if (opts.screenReader) {
     const st = diffStats(oldText, newText);
     return [L(`Cambios: ${st.added} líneas añadidas, ${st.removed} eliminadas.`, `Changes: ${st.added} lines added, ${st.removed} removed.`)];
@@ -452,8 +533,11 @@ export function diffLines(oldText, newText, { startLine = 1, maxLines = 24, inde
 }
 
 export function printDiff(oldText, newText, o = {}) {
-  const lines = diffLines(oldText, newText, o);
-  if (lines.length) out(`${lines.join('\n')}\n`);
+  // se recalcula al redimensionar (el fondo de color ocupa el ancho de la terminal)
+  outBlock(() => {
+    const lines = diffLines(oldText, newText, o);
+    return lines.length ? `${lines.join('\n')}\n` : '';
+  });
 }
 
 // ── Tareas ───────────────────────────────────────────────────────
