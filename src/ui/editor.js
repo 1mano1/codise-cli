@@ -6,7 +6,7 @@ import path from 'node:path';
 import { c, style, visibleWidth } from './theme.js';
 import { startLive, stopLive, drawLive, writeAbove, liveActive } from './live.js';
 import { L } from '../i18n.js';
-import { wrap } from './output.js';
+import { wrap, handleResize, outBlock as printBlock } from './output.js';
 
 const MAX_HISTORY = 500;
 const MAX_ROWS = 8;
@@ -39,7 +39,7 @@ export class BoxInput {
     this.onKeyBound = (s, key) => this.onKey(s, key || {});
     process.stdin.on('keypress', this.onKeyBound);
     process.stdout.write('\x1b[?2004h'); // pegado entre corchetes: pegar varias líneas no envía
-    this.onResize = () => drawLive();
+    this.onResize = () => handleResize(); // redibuja la conversación al nuevo ancho (responsivo)
     process.stdout.on('resize', this.onResize);
     this.restore = () => { try { process.stdout.write('\x1b[?2004l'); } catch { /* cerrado */ } };
     process.on('exit', this.restore);
@@ -129,9 +129,11 @@ export class BoxInput {
   // Mensaje del usuario en la conversación, ya fuera de la caja.
   echo(text) {
     // se ajusta al ancho con sangría, para que las líneas siguientes queden alineadas bajo el texto
-    const lines = wrap(text, Math.max(20, (process.stdout.columns || 80) - 4));
-    const out = lines.map((l, i) => (i === 0 ? `${c.accent('›', { bold: true })} ${c.primary(l)}` : `  ${c.primary(l)}`)).join('\n');
-    writeAbove(`\n${out}`);
+    // pasa por el historial como bloque: al redimensionar se vuelve a ajustar al nuevo ancho
+    printBlock(() => {
+      const lines = wrap(text, Math.max(20, (process.stdout.columns || 80) - 4));
+      return `\n${lines.map((l, i) => (i === 0 ? `${c.accent('›', { bold: true })} ${c.primary(l)}` : `  ${c.primary(l)}`)).join('\n')}\n`;
+    });
   }
 
   // ── Edición ────────────────────────────────────────────────────

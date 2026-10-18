@@ -54,7 +54,7 @@ export const DEFAULTS = {
   autoCompact: 0.85,
   notifications: false,
   offline: false,
-  lean: false,
+  lean: 'auto', // auto: ligero con modelos locales, completo con proveedores en la nube
   mcpServers: {},
   hooks: {},
   enabledPlugins: {},

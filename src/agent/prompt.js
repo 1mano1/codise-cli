@@ -62,6 +62,6 @@ export function buildSystemPrompt(runtime, { agent, tools, toolMode, model }) {
     const blocks = mem.map((m) => `## ${m.name} (${m.agent || 'Códice'}, ${m.scope === 'usuario' ? 'user' : 'project'}: ${m.file})\n${m.content.trim()}`).join('\n\n');
     parts.push(`# Project memory and instructions\nFollow these instructions; they override default behavior.\n\n${blocks}`);
   }
-  if (toolMode === 'prompt') parts.push(toolsPrompt(tools, { lean: s.lean }));
+  if (toolMode === 'prompt') parts.push(toolsPrompt(tools, { lean: runtime.isLean() }));
   return parts.filter(Boolean).join('\n\n');
 }

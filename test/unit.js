@@ -249,6 +249,25 @@ export async function unitTests(t) {
     assert(loadMemory(root, root, { compat: false }).every((m) => m.agent === 'Códice'), 'compat desactivado: solo CODICE.md');
   });
 
+  await t('diff: en archivos nuevos todas las líneas (también las vacías) son añadidas', async (assert) => {
+    const { diffLines } = await import('../src/ui/output.js');
+    const lines = diffLines('', '## Título\n\n### Sección\n- uno').map((l) => l.replace(/\x1b\[[0-9;]*m/g, ''));
+    assert(lines.length === 4, `4 líneas: ${lines.length}`);
+    lines.forEach((l, i) => assert(new RegExp(`^\\s*${i + 1} \\+`).test(l), `línea ${i + 1} con número y +: "${l}"`));
+  });
+
+  await t('modo ligero: herramientas sin textos de ayuda y con lista de agentes', async (assert) => {
+    const { toolSpec, BUILTIN_TOOLS } = await import('../src/tools/index.js');
+    const rt = { agents: { explore: { name: 'explore', description: 'Fast read-only agent to find files, symbols and how things work across a codebase.' } }, skills: {} };
+    const read = toolSpec(BUILTIN_TOOLS.find((x) => x.name === 'Read'), rt, { lean: true });
+    assert(!JSON.stringify(read.parameters).includes('"description"'), 'parámetros sin descripción');
+    assert(read.parameters.required.includes('file_path'), 'se conserva el esquema');
+    const task = toolSpec(BUILTIN_TOOLS.find((x) => x.name === 'Task'), rt, { lean: true });
+    assert(task.description.includes('- explore:'), 'la lista de agentes se conserva');
+    const full = toolSpec(BUILTIN_TOOLS.find((x) => x.name === 'Read'), rt, { lean: false });
+    assert(JSON.stringify(read).length < JSON.stringify(full).length * 0.75, 'al menos 25 % más corto');
+  });
+
   await t('motor local: paquetes por sistema y nombre de repo de Hugging Face', async (assert) => {
     const E = await import('../src/local/engine.js');
     const HF = await import('../src/local/hf.js');

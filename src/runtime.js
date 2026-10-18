@@ -73,6 +73,13 @@ export class Runtime {
 
   get offline() { return Boolean(this.settings.offline); }
 
+  // Modo ligero: true/false explícito, o 'auto' (ligero salvo con proveedores en la nube).
+  isLean() {
+    const v = this.settings.lean;
+    if (v === true || v === false) return v;
+    return !this.providerInfo()?.cloud;
+  }
+
   mascot() { return resolveMascot(this.settings, this.mascots); }
   spinnerVerbs() { return mascotVerbs(this.mascot(), this.settings); }
 
@@ -134,6 +141,7 @@ export class Runtime {
     if (!usage) return;
     this.usage.input += usage.input || 0;
     this.usage.output += usage.output || 0;
+    this.usage.cached = (this.usage.cached || 0) + (usage.cached || 0);
     const key = `${client.providerName}:${client.model}`;
     const u = (this.usage.byModel[key] ||= { input: 0, output: 0, requests: 0, ms: 0 });
     u.input += usage.input || 0;
@@ -212,7 +220,6 @@ export class Runtime {
     if (this.lastResponseMs) parts.push(L(`última ${formatDuration(this.lastResponseMs)}`, `last ${formatDuration(this.lastResponseMs)}`));
     const mcpOk = this.mcp.status().filter((s) => s.status === 'conectado').length;
     if (mcpOk) parts.push(`${mcpOk} MCP`);
-    if (this.usage.output) parts.push(`${formatTokens(this.usage.input + this.usage.output)} tokens`);
     const cols = (process.stdout.columns || 80) - 1;
     while (parts.length > 1 && 2 + visibleWidth(mode) + 3 + visibleWidth(parts.join(' · ')) > cols) parts.pop();
     const right = c.dim(parts.join(' · '));
