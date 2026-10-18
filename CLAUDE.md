@@ -274,3 +274,22 @@ Pedido del usuario: no tener que "encender" el modelo aparte; elegirlo desde Có
 - En la laptop del usuario: `modelDirs = ["C:/ProyectosIA_Imanol/modelos"]` → detecta `qwen3b-int4`; respuesta completa
   en ~32 s la primera vez (la mayor parte es procesar el prompt de sistema en la iGPU), el motor se apaga al salir.
 - Lección: no escribir texto con comillas invertidas dentro de `node -e "…"` en bash; usar el editor o archivos.
+
+## Memoria compatible con otros agentes (rama `feat/memory-compat`)
+
+- "Archivo de memoria" = `CODICE.md` en la raíz del proyecto (equivalente a `CLAUDE.md`). El prompt de sistema lo indica.
+- Se leen también: `CLAUDE.md`/`.claude/CLAUDE.md` (Claude Code), `AGENTS.md` (Codex/OpenCode), `GEMINI.md`,
+  `QWEN.md`, `.github/copilot-instructions.md`, `.cursorrules` y `.cursor/rules/*.mdc` (Cursor), `.windsurfrules`,
+  `.clinerules` (archivo o carpeta), `CONVENTIONS.md` (Aider); y de usuario `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
+  `~/.gemini/GEMINI.md`, `~/.qwen/QWEN.md`. Se desactiva con `compat.claude: false`.
+- `/init` incorpora lo vigente de esos archivos a `CODICE.md` sin borrarlos; `/memory` muestra de qué agente es cada uno.
+
+## v2 de la interfaz de consola — PENDIENTE DE APROBACIÓN (no implementar hasta el visto bueno)
+
+Diseño en Figma, sección "v2 · Estructura de la consola (propuesta)" (pantallas A–D + notas HCI):
+- Bienvenida compacta en un contenedor: mascota pequeña + versión, modelo, carpeta y 3 atajos (sin banner gigante).
+- Caja de escritura fija abajo, con borde de acento cuando tiene el foco; crece con el texto (hasta ~8 líneas).
+- Barra de estado DEBAJO de la caja (modo, shift+tab, modelo, % contexto, tiempo de la última respuesta);
+  la paleta "/" ocupa ese lugar al escribir comandos.
+- Spinner y diálogos de permiso justo ENCIMA de la caja; durante un diálogo la caja se atenúa.
+- Comandos largos completos en varias líneas; nada se desborda. Modo lector de pantalla: salida lineal sin cajas.

@@ -36,6 +36,7 @@ const CORE_RULES = `# How to work
 - Do not run destructive commands (rm -rf, git reset --hard, force push, dropping data) unless the user asked for it.
 - Never expose secrets. Do not commit or push unless asked.
 - Reference code locations as path:line.
+- Project memory: CODICE.md at the project root is this project's context/instructions file (the equivalent of CLAUDE.md). When the user asks for a "memory file", "context file" or project instructions, create or update CODICE.md with concise facts (what the project is, build/test commands, architecture, conventions, decisions). Do not create other memory files unless explicitly asked.
 - When finished, give a short summary of what changed.`;
 
 export function buildSystemPrompt(runtime, { agent, tools, toolMode, model }) {
@@ -58,7 +59,7 @@ export function buildSystemPrompt(runtime, { agent, tools, toolMode, model }) {
   if (runtime.offline) parts.push('# Offline mode\nNetwork tools are disabled. Do not try to access the internet.');
   const mem = runtime.memory || [];
   if (mem.length) {
-    const blocks = mem.map((m) => `## ${m.name} (${m.scope}: ${m.file})\n${m.content.trim()}`).join('\n\n');
+    const blocks = mem.map((m) => `## ${m.name} (${m.agent || 'Códice'}, ${m.scope === 'usuario' ? 'user' : 'project'}: ${m.file})\n${m.content.trim()}`).join('\n\n');
     parts.push(`# Project memory and instructions\nFollow these instructions; they override default behavior.\n\n${blocks}`);
   }
   if (toolMode === 'prompt') parts.push(toolsPrompt(tools, { lean: s.lean }));

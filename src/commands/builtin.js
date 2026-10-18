@@ -326,14 +326,15 @@ export const BUILTIN_COMMANDS = {
       }
       const files = memoryFiles(runtime.cwd, runtime.projectRoot, { compat: runtime.settings.compat?.claude !== false });
       if (!files.length) return ui.hint(L('Sin memoria todavía. Usa /init para crear CODICE.md o escribe "# nota" para guardar algo.', 'No memory yet. Use /init to create CODICE.md or type "# note" to save something.'));
-      for (const f of files) ui.println(`  ${c.success('●')} ${c.info(f.file)} ${c.dim(`· ${f.scope}`)}`);
+      for (const f of files) ui.println(`  ${c.success('●')} ${c.info(f.file)} ${c.dim(`· ${f.agent} · ${f.scope === 'usuario' ? L('usuario', 'user') : L('proyecto', 'project')}`)}`);
+      ui.hint(L('Códice también lee los archivos de contexto de Claude Code, Codex, Gemini, Qwen, Copilot, Cursor, Windsurf, Cline y Aider.', 'Códice also reads the context files of Claude Code, Codex, Gemini, Qwen, Copilot, Cursor, Windsurf, Cline and Aider.'));
     },
   },
 
   init: {
     get description() { return L('Analiza el proyecto y crea CODICE.md', 'Analyze the project and create CODICE.md'); },
     async run(args, { repl }) {
-      await repl.runPrompt(`Analyze this codebase and create (or improve, if it exists) a CODICE.md file at the project root to guide future work. Include: what the project is, how to install/build/test/lint (exact commands), the architecture and key directories, and code conventions. Keep it concise and factual; do not invent anything. Write it in ${L('Spanish', 'English')}. ${args}`.trim(), { display: '/init' });
+      await repl.runPrompt(`Analyze this codebase and create (or improve, if it exists) a CODICE.md file at the project root to guide future work. Include: what the project is, how to install/build/test/lint (exact commands), the architecture and key directories, and code conventions. If context files from other agents exist (CLAUDE.md, AGENTS.md, GEMINI.md, QWEN.md, .github/copilot-instructions.md, .cursorrules, .cursor/rules, .windsurfrules, .clinerules, CONVENTIONS.md), read them and incorporate what is still accurate; do not delete them. Keep it concise and factual; do not invent anything. Write it in ${L('Spanish', 'English')}. ${args}`.trim(), { display: '/init' });
     },
   },
 
