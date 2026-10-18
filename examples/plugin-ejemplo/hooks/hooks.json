@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "node \"${CODICE_PLUGIN_ROOT}/hooks/log-edit.js\"" }]
+      }
+    ]
+  }
+}
