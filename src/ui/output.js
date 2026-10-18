@@ -19,13 +19,25 @@ export function width() {
   return Math.max(40, Math.min(opts.stream.columns || 100, 160));
 }
 
+let activeSpinner = null;
+
+// Escribe respetando el spinner: lo borra, escribe y lo vuelve a dibujar debajo.
 export function out(s = '') {
   s = String(s);
   if (!s) return;
+  const sp = activeSpinner?.timer ? activeSpinner : null;
+  if (sp) opts.stream.write('\r\x1b[2K');
   opts.stream.write(s);
   lastChar = s.at(-1);
   headerMark = null;
+  if (sp) {
+    if (lastChar !== '\n') { opts.stream.write('\n'); lastChar = '\n'; }
+    sp.draw();
+  }
 }
+
+export function getHeaderMark() { return headerMark; }
+export function setHeaderMark(m) { headerMark = m; }
 
 export function println(s = '') {
   out(`${s}\n`);
@@ -237,21 +249,25 @@ export class Spinner {
     }
     ensureNewline();
     let i = 0;
-    const draw = () => {
+    this.draw = () => {
       const secs = formatDuration(Date.now() - this.t0);
       const tk = this.tokens ? ` · ↓ ${formatTokens(this.tokens)} tokens` : '';
       const line = `${c.soft(FRAMES[i++ % FRAMES.length])} ${this.label ? c.agent(`${this.label} `) : ''}${c.soft(this.verb, { italic: true })} ${c.dim(`(${secs}${tk} · esc para interrumpir)`)}`;
       opts.stream.write(`\r\x1b[2K${fit(line)}`);
     };
-    draw();
-    this.timer = setInterval(draw, 120);
+    this.draw();
+    this.timer = setInterval(this.draw, 120);
+    activeSpinner = this;
   }
+
+  setVerb(verb) { this.verb = verb; }
 
   addTokens(n) { this.tokens += n; }
 
   stop() {
     if (this.timer) { clearInterval(this.timer); this.timer = null; opts.stream.write('\r\x1b[2K'); lastChar = '\n'; }
     if (this.static) { opts.stream.write('\n'); lastChar = '\n'; this.static = false; }
+    if (activeSpinner === this) activeSpinner = null;
     this.active = false;
   }
 }
@@ -277,7 +293,10 @@ export function toolEnd(name, summary, { ok, text, indent = '' }) {
     return;
   }
   if (headerMark && headerMark.name === name && opts.stream.isTTY && colorLevel() > 0) {
-    opts.stream.write(`\x1b[1A\r\x1b[2K${header(name, summary, ok ? 'ok' : 'error', indent)}\n`);
+    const sp = activeSpinner?.timer ? activeSpinner : null;
+    opts.stream.write(`${sp ? '\r\x1b[2K' : ''}\x1b[1A\r\x1b[2K${header(name, summary, ok ? 'ok' : 'error', indent)}\n`);
+    lastChar = '\n';
+    if (sp) sp.draw();
   } else {
     ensureNewline();
     println(header(name, summary, ok ? 'ok' : 'error', indent));
@@ -321,14 +340,14 @@ export function diffStats(oldText, newText) {
   return { added: d.filter((x) => x[0] === '+').length, removed: d.filter((x) => x[0] === '-').length };
 }
 
-export function printDiff(oldText, newText, { startLine = 1, maxLines = 24, indent = '  ' } = {}) {
+// Devuelve las líneas del diff ya coloreadas (contexto de 2 líneas alrededor de cada cambio).
+export function diffLines(oldText, newText, { startLine = 1, maxLines = 24, indent = '  ' } = {}) {
   const d = lcsDiff(String(oldText).split('\n'), String(newText).split('\n'));
   if (opts.screenReader) {
     const st = diffStats(oldText, newText);
-    println(`Cambios: ${st.added} líneas añadidas, ${st.removed} eliminadas.`);
-    return;
+    return [`Cambios: ${st.added} líneas añadidas, ${st.removed} eliminadas.`];
   }
-  // recorta contexto: muestra cambios con 2 líneas alrededor
+  const lines = [];
   const keep = new Array(d.length).fill(false);
   d.forEach((x, k) => { if (x[0] !== ' ') for (let t = Math.max(0, k - 2); t <= Math.min(d.length - 1, k + 2); t++) keep[t] = true; });
   let oldNo = startLine, newNo = startLine, shown = 0, skipped = false;
@@ -339,14 +358,21 @@ export function printDiff(oldText, newText, { startLine = 1, maxLines = 24, inde
     if (sign !== '+') oldNo++;
     if (sign !== '-') newNo++;
     if (!keep[k]) { skipped = true; continue; }
-    if (skipped) { println(indent + c.dim('   ⋮')); skipped = false; }
-    if (shown++ >= maxLines) { println(indent + c.dim(`   … ${d.length - k} líneas más (ctrl+o para ver todo)`)); break; }
-    const content = `${String(no).padStart(4)} ${sign} ${text}`;
-    const padded = content.length < w ? content + ' '.repeat(w - visibleWidth(content)) : fit(content, w);
-    if (sign === '+') println(indent + style(padded, { fg: 'text/primary', bg: 'diff/add-bg' }).replace(` + `, ` ${style('+', { fg: 'status/success', bg: 'diff/add-bg', bold: true })}${style(' ', { bg: 'diff/add-bg' })}`));
-    else if (sign === '-') println(indent + style(padded, { fg: 'text/primary', bg: 'diff/del-bg' }).replace(` - `, ` ${style('-', { fg: 'status/error', bg: 'diff/del-bg', bold: true })}${style(' ', { bg: 'diff/del-bg' })}`));
-    else println(indent + c.dim(padded));
+    if (skipped) { lines.push(indent + c.dim('   ⋮')); skipped = false; }
+    if (shown++ >= maxLines) { lines.push(indent + c.dim(`   … ${d.length - k} líneas más`)); break; }
+    const num = `${String(no).padStart(4)} `;
+    const code = fit(text, w - num.length - 2);
+    const pad = ' '.repeat(Math.max(0, w - num.length - 2 - visibleWidth(code)));
+    if (sign === ' ') { lines.push(indent + c.dim(`${num}  ${code}`)); continue; }
+    const bg = sign === '+' ? 'diff/add-bg' : 'diff/del-bg';
+    const signColor = sign === '+' ? 'status/success' : 'status/error';
+    lines.push(indent + style(num, { fg: 'text/dim', bg }) + style(`${sign} `, { fg: signColor, bg, bold: true }) + style(code + pad, { fg: 'text/primary', bg }));
   }
+  return lines;
+}
+
+export function printDiff(oldText, newText, o = {}) {
+  for (const l of diffLines(oldText, newText, o)) println(l);
 }
 
 // ── Tareas ───────────────────────────────────────────────────────

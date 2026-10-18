@@ -4,9 +4,12 @@ import { c, style, visibleWidth } from './theme.js';
 import { isScreenReader, ensureNewline, println, width } from './output.js';
 
 // options: [{ label, value, hint, hintColor, disabled }]
-export async function select(input, { title, options, initial = 0, footer, extra, collapse = true }) {
+export async function select(input, { title, options, initial = 0, footer, extra, collapse = true, erase = false, pre = [] }) {
   if (!options.length) return null;
-  if (!input.tty || isScreenReader()) return selectByNumber(input, { title, options });
+  if (!input?.tty || isScreenReader()) {
+    for (const l of pre) println(l.replace(/\x1b\[[0-9;]*m/g, ''));
+    return selectByNumber(input, { title, options });
+  }
   ensureNewline();
   let sel = Math.max(0, Math.min(initial, options.length - 1));
   let drawn = 0;
@@ -14,7 +17,7 @@ export async function select(input, { title, options, initial = 0, footer, extra
   const w = Math.min(width() - 2, 110);
 
   const render = () => {
-    const lines = [];
+    const lines = [...pre];
     if (title) lines.push(title);
     options.forEach((o, i) => {
       const isSel = i === sel;
@@ -38,7 +41,8 @@ export async function select(input, { title, options, initial = 0, footer, extra
     let release;
     const finish = (value) => {
       release();
-      if (collapse) {
+      if (erase) out.write(`\x1b[${drawn}A\r\x1b[J`);
+      else if (collapse) {
         out.write(`\x1b[${drawn}A\r\x1b[J`);
         const chosen = value == null ? c.dim('cancelado') : style(options[sel].label, { fg: 'accent/soft', bold: true });
         if (title) println(`${title} ${c.dim('→')} ${chosen}`);
@@ -59,6 +63,7 @@ export async function select(input, { title, options, initial = 0, footer, extra
 
 async function selectByNumber(input, { title, options }) {
   ensureNewline();
+  if (!input) return null;
   if (title) println(title.replace(/\x1b\[[0-9;]*m/g, ''));
   options.forEach((o, i) => println(`  ${i + 1}. ${o.label}${o.hint ? ` (${o.hint})` : ''}`));
   const a = await input.question('Escribe el número de tu opción (vacío para cancelar): ');
