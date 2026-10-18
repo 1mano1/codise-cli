@@ -105,11 +105,25 @@ export function parseArgs(argv) {
   return o;
 }
 
-async function readStdin() {
-  if (process.stdin.isTTY) return '';
-  const chunks = [];
-  for await (const ch of process.stdin) chunks.push(ch);
-  return Buffer.concat(chunks).toString('utf8');
+// Lee lo que llegue por tubería. Si stdin está abierto pero nadie escribe (IDE, CI, otra herramienta),
+// no espera para siempre: a los 300 ms sin datos sigue sin entrada.
+function readStdin() {
+  if (process.stdin.isTTY) return Promise.resolve('');
+  return new Promise((resolve) => {
+    let data = '';
+    let received = false;
+    const finish = () => {
+      clearTimeout(timer);
+      process.stdin.removeAllListeners('data');
+      process.stdin.pause();
+      resolve(data);
+    };
+    const timer = setTimeout(() => { if (!received) finish(); }, 300);
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (d) => { received = true; data += d; });
+    process.stdin.once('end', finish);
+    process.stdin.once('error', finish);
+  });
 }
 
 export async function main(argv) {

@@ -81,6 +81,12 @@ export function runShell(command, { cwd, timeout = 120000, signal, shell, env } 
   });
 }
 
+// La línea más informativa de una salida con error (no "Node.js v22…" ni líneas vacías).
+export function errorLine(lines) {
+  const useful = lines.map((l) => l.trim()).filter((l) => l && !/^Node\.js v\d/.test(l) && !/^at /.test(l) && l !== '^');
+  return [...useful].reverse().find((l) => /(error|exception|failed|fatal|ERR!|not found|no such)/i.test(l)) || useful.at(-1) || '';
+}
+
 export const Bash = {
   name: 'Bash',
   description: 'Run a shell command in the working directory and return its output (stdout + stderr). Use for git, package managers, tests, builds. Avoid interactive commands. Prefer Read/Grep/Glob over cat/grep/find.',
@@ -105,7 +111,7 @@ export const Bash = {
     const lines = out ? out.split('\n') : [];
     const display = r.code === 0
       ? (lines.length ? `${lines.slice(0, 3).join('\n')}${lines.length > 3 ? L(`\n… ${lines.length - 3} líneas más`, `\n… ${lines.length - 3} more lines`) : ''}` : L('Sin salida', 'No output'))
-      : `${L('Código de salida', 'Exit code')} ${r.code}${lines.length ? ` · ${lines.at(-1).slice(0, 120)}` : ''}`;
+      : `${L('Código de salida', 'Exit code')} ${r.code}${errorLine(lines) ? ` · ${errorLine(lines).slice(0, 120)}` : ''}`;
     return {
       content: `${out || '(no output)'}${r.code !== 0 ? `\n[exit code ${r.code}]` : ''}`,
       display,
