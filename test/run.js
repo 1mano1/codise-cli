@@ -1,5 +1,15 @@
 // Ejecutor de pruebas mínimo (sin dependencias): node test/run.js [filtro]
-import { e2eTests } from './e2e.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+// Carpeta de configuración aislada: nunca tocar la ~/.codice real.
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'codice-home-'));
+process.env.CODICE_HOME = home;
+process.env.NO_COLOR = '1';
+
+const { unitTests } = await import('./unit.js');
+const { e2eTests } = await import('./e2e.js');
 
 const filter = process.argv[2] || '';
 let passed = 0, failed = 0;
@@ -25,7 +35,7 @@ async function t(name, fn) {
   }
 }
 
-const suites = [e2eTests];
-for (const s of suites) await s(t);
+for (const suite of [unitTests, e2eTests]) await suite(t);
+fs.rmSync(home, { recursive: true, force: true });
 console.log(`\n${passed} correctas, ${failed} fallidas`);
 process.exitCode = failed ? 1 : 0;
