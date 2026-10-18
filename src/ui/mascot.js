@@ -37,11 +37,15 @@ export function saveCustomMascot(id, mascot) {
 }
 
 // auto → mascota propia que declare el tema, o la del tema, o Xolo.
+// auto → la elegida para este tema (themeMascots), una propia que declare el tema, la del tema o Xolo.
 export function resolveMascot(settings, mascots) {
   const sel = settings.mascot?.name || 'auto';
   if (sel === 'none' || sel === 'ninguna') return null;
   if (sel !== 'auto' && mascots[sel]) return mascots[sel];
   const theme = currentTheme();
+  const perTheme = settings.themeMascots?.[theme.id];
+  if (perTheme === 'none') return null;
+  if (perTheme && mascots[perTheme]) return mascots[perTheme];
   const custom = Object.values(mascots).find((m) => m.custom && (m.themes || []).includes(theme.id));
   return custom || mascots[theme.mascot] || mascots.xolo || null;
 }

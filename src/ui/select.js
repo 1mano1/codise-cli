@@ -2,6 +2,7 @@
 // muestra una lista numerada y pide el número.
 import { c, style, visibleWidth } from './theme.js';
 import { isScreenReader, ensureNewline, println, width } from './output.js';
+import { L } from '../i18n.js';
 
 // options: [{ label, value, hint, hintColor, disabled }]
 export async function select(input, { title, options, initial = 0, footer, extra, collapse = true, erase = false, pre = [], onChange }) {
@@ -32,7 +33,7 @@ export async function select(input, { title, options, initial = 0, footer, extra
       lines.push(line);
     });
     if (extra) for (const l of extra(options[sel], sel) || []) lines.push(l);
-    lines.push(c.dim(footer || '↑↓ elegir · enter confirmar · 1-9 directo · esc cancelar'));
+    lines.push(c.dim(footer || L('↑↓ elegir · enter confirmar · esc cancelar', '↑↓ move · enter select · esc cancel')));
     if (drawn) out.write(`\x1b[${drawn}A\r\x1b[J`);
     out.write(`${lines.join('\n')}\n`);
     drawn = lines.length;
@@ -45,7 +46,7 @@ export async function select(input, { title, options, initial = 0, footer, extra
       if (erase) out.write(`\x1b[${drawn}A\r\x1b[J`);
       else if (collapse) {
         out.write(`\x1b[${drawn}A\r\x1b[J`);
-        const chosen = value == null ? c.dim('cancelado') : style(options[sel].label, { fg: 'accent/soft', bold: true });
+        const chosen = value == null ? c.dim(L('cancelado', 'cancelled')) : style(options[sel].label, { fg: 'accent/soft', bold: true });
         if (title) println(`${title} ${c.dim('→')} ${chosen}`);
       }
       resolve(value);
@@ -67,13 +68,13 @@ async function selectByNumber(input, { title, options }) {
   if (!input) return null;
   if (title) println(title.replace(/\x1b\[[0-9;]*m/g, ''));
   options.forEach((o, i) => println(`  ${i + 1}. ${o.label}${o.hint ? ` (${o.hint})` : ''}`));
-  const a = await input.question('Escribe el número de tu opción (vacío para cancelar): ');
+  const a = await input.question(L('Escribe el número de tu opción (vacío para cancelar): ', 'Type the number of your choice (empty to cancel): '));
   const n = Number(String(a ?? '').trim());
   if (!n || n < 1 || n > options.length) return null;
   return options[n - 1].value;
 }
 
-export async function confirm(input, question, { yes = 'Sí', no = 'No' } = {}) {
+export async function confirm(input, question, { yes = L('Sí', 'Yes'), no = 'No' } = {}) {
   const v = await select(input, { title: question, options: [{ label: yes, value: true }, { label: no, value: false }] });
   return v === true;
 }

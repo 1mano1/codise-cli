@@ -14,6 +14,7 @@ import { OllamaClient } from './llm/ollama.js';
 import { OpenAIClient } from './llm/openai.js';
 import { RemoteClient, createSingleClient } from './llm/index.js';
 import { parseTextToolCalls } from './llm/textTools.js';
+import { L } from './i18n.js';
 
 const SERVE_FILE = () => path.join(HOME, 'serve.json');
 
@@ -165,7 +166,7 @@ export async function connect(args, o, rt) {
   try {
     info = await client.info();
   } catch (e) {
-    ui.errorBox(`No pude conectar con ${url}`, e.message, '¿Está corriendo "codice serve" en la PC? ¿Misma red o Tailscale activo? ¿Token correcto?');
+    ui.errorBox(`${L('No pude conectar con', 'Could not connect to')} ${url}: ${e.message}`, null, L('Revisa que “codice serve” esté abierto en esa PC, que estén en la misma red (o Tailscale) y que el token sea correcto.', 'Check that “codice serve” is running on that PC, that you are on the same network (or Tailscale) and that the token is correct.'));
     return 1;
   }
   rt.save(`providers.${name}`, { type: 'codice', baseUrl: url.replace(/\/+$/, ''), apiKey: token, label: `${name} (${info.host})` });
