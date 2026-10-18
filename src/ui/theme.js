@@ -55,8 +55,20 @@ function buildCustom(id, c) {
   return { name: c.name || id, appearance: c.appearance || base.appearance, mascot: c.mascot || base.mascot, tokens, custom: true };
 }
 
+// Detecta si la terminal tiene fondo claro (COLORFGBG="fg;bg", usado por muchas terminales).
+export function detectAppearance() {
+  const v = process.env.COLORFGBG;
+  if (v) {
+    const bg = Number(v.split(';').pop());
+    if (!Number.isNaN(bg)) return bg === 7 || bg === 15 || (bg >= 9 && bg <= 14) ? 'light' : 'dark';
+  }
+  if (process.env.CODICE_APPEARANCE === 'light') return 'light';
+  return 'dark';
+}
+
 export function setTheme(id, customThemes = {}) {
   const themes = allThemes(customThemes);
+  if (id === 'auto' || !id) id = detectAppearance() === 'light' ? 'alba' : 'brasa';
   const t = themes[id] || themes.brasa;
   state.id = themes[id] ? id : 'brasa';
   state.theme = t;

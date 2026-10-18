@@ -136,6 +136,14 @@ export async function e2eTests(t) {
       }
     });
 
+    await t('modo lector de pantalla: frases completas, sin dibujos', async (assert) => {
+      m.push({ toolCalls: [{ name: 'LS', args: {} }] }, { content: 'Listo.' });
+      const r = await runCli(['--screen-reader', '--yolo', ...base], { ...opts, input: 'lista\n/exit\n' });
+      assert(r.stdout.includes('Códice 0.1.0. Agente de programación open source.'), 'banner en texto');
+      assert(!/[█╭╰│]/.test(r.stdout), 'sin bloques ni cajas');
+      assert(/Herramienta LS, correcta/.test(r.stdout), 'resultado de herramienta como frase');
+    });
+
     await t('error de conexión con mensaje accionable', async (assert) => {
       const r = await runCli(['-p', 'hola', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'x'], opts);
       assert(r.status === 1, `código ${r.status}`);

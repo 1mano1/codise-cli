@@ -21,9 +21,10 @@ Opciones:
       --tool-mode <modo>             auto | native | prompt
       --offline                      Desactiva las herramientas de red
       --output-format <fmt>          text | json (con -p)
-      --theme <tema>                 brasa | alba | medianoche | daltonico | alto-contraste | fosforo
+      --theme <tema>                 auto | brasa | alba | medianoche | daltonico | alto-contraste | fosforo
       --screen-reader                Salida apta para lectores de pantalla
       --reduce-motion                Sin animaciones
+      --no-color                     Sin colores (también respeta NO_COLOR)
       --no-mcp                       No conectar servidores MCP
       --cwd <ruta>                   Directorio de trabajo
   -v, --version                      Versión
@@ -91,7 +92,7 @@ export async function main(argv) {
     overrides: {
       model: o.model, provider: o.provider, baseUrl: o['base-url'], apiKey: o['api-key'], providerType: o['provider-type'],
       permissionMode: o.yolo ? 'bypass' : o['permission-mode'], toolMode: o['tool-mode'], offline: o.offline,
-      screenReader: o['screen-reader'], reduceMotion: o['reduce-motion'], theme: o.theme,
+      screenReader: o['screen-reader'], reduceMotion: o['reduce-motion'], noColor: o['no-color'], theme: o.theme,
     },
   });
 

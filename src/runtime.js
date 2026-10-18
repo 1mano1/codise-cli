@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { loadSettings, findProjectRoot, settingsFiles, saveSetting, resolveProvider, ensureHome, HOME } from './config.js';
 import { readJSON, writeJSON } from './util/fs.js';
-import { setTheme, currentTheme, setColorLevel, c } from './ui/theme.js';
+import { setTheme, currentTheme, setColorLevel, detectColorLevel, c } from './ui/theme.js';
 import { loadMascots, resolveMascot, mascotVerbs } from './ui/mascot.js';
 import { Spinner, configureOutput, warn } from './ui/output.js';
 import { createUI } from './ui/bridge.js';
@@ -49,11 +49,12 @@ export class Runtime {
     if (o.offline) s.offline = true;
     if (o.screenReader) s.accessibility = { ...s.accessibility, screenReader: true };
     if (o.reduceMotion) s.accessibility = { ...s.accessibility, reduceMotion: true };
+    if (o.noColor) s.accessibility = { ...s.accessibility, noColor: true };
     if (o.theme) s.theme = o.theme;
     this.settings = s;
     this.localSettings = readJSON(settingsFiles(this.projectRoot).local, {});
     if (process.env.REDUCE_MOTION) s.accessibility.reduceMotion = true;
-    if (s.accessibility.screenReader) setColorLevel(0);
+    setColorLevel(s.accessibility.screenReader || s.accessibility.noColor ? 0 : detectColorLevel());
     configureOutput({ screenReader: Boolean(s.accessibility.screenReader), reduceMotion: Boolean(s.accessibility.reduceMotion) });
     const th = setTheme(s.theme, s.customThemes);
     this.themeWarnings = th.warnings;

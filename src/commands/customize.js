@@ -56,15 +56,16 @@ async function customThemeWizard({ runtime, repl }) {
 async function themeCommand(args, ctx) {
   const { runtime, repl } = ctx;
   const themes = allThemes(runtime.settings.customThemes);
-  const original = currentTheme().id;
+  const original = runtime.settings.theme || 'auto';
   const direct = args.trim();
-  if (direct && themes[direct]) { runtime.save('theme', direct); return ui.success(`Tema: ${themes[direct].name}`); }
-  const options = Object.entries(themes).map(([id, t]) => ({
+  if (direct && (themes[direct] || direct === 'auto')) { runtime.save('theme', direct); return ui.success(`Tema: ${direct === 'auto' ? `automático (${runtime.themeName()})` : themes[direct].name}`); }
+  const options = [{ label: 'Automático (según la terminal)', value: 'auto', hint: original === 'auto' ? 'actual' : 'claro u oscuro', hintColor: original === 'auto' ? 'status/success' : 'text/dim' }];
+  options.push(...Object.entries(themes).map(([id, t]) => ({
     label: t.name,
     value: id,
     hint: [id === original ? 'actual' : '', id === 'daltonico' ? 'verde/rojo → azul/naranja' : '', id === 'alto-contraste' ? '≥ 7:1' : '', t.custom ? 'personalizado' : ''].filter(Boolean).join(' · '),
     hintColor: id === original ? 'status/success' : 'text/dim',
-  }));
+  })));
   options.push({ label: 'Personalizado…', value: '__custom__', hint: 'crear un tema a partir de otro' });
   const choice = await select(repl.input, {
     title: `Elige un tema ${c.dim('(la vista previa cambia al moverte)')}`,
@@ -76,7 +77,44 @@ async function themeCommand(args, ctx) {
   if (!choice) { setTheme(original, runtime.settings.customThemes); return; }
   if (choice === '__custom__') { setTheme(original, runtime.settings.customThemes); return customThemeWizard(ctx); }
   runtime.save('theme', choice);
-  ui.success(`Tema: ${themes[choice].name}${runtime.settings.mascot?.name === 'auto' ? ` · mascota: ${runtime.mascot()?.name || 'ninguna'}` : ''}`);
+  ui.success(`Tema: ${runtime.themeName()}${choice === 'auto' ? ' (automático)' : ''}${runtime.settings.mascot?.name === 'auto' ? ` · mascota: ${runtime.mascot()?.name || 'ninguna'}` : ''}`);
+}
+
+// Accesos rápidos de accesibilidad.
+async function accessibilityCommand(args, { runtime, repl }) {
+  for (;;) {
+    const a = runtime.settings.accessibility || {};
+    const yes = (v) => (v ? 'activado' : 'desactivado');
+    const choice = await select(repl.input, {
+      title: c.primary('Accesibilidad', { bold: true }),
+      options: [
+        { label: 'Modo lector de pantalla', value: 'sr', hint: `${yes(a.screenReader)} · frases completas, sin dibujos ni animaciones` },
+        { label: 'Reducir movimiento', value: 'rm', hint: `${yes(a.reduceMotion)} · spinner y mascota estáticos` },
+        { label: 'Sin colores', value: 'nc', hint: `${yes(a.noColor)} · solo símbolos y texto` },
+        { label: 'Tema de alto contraste', value: 'hc', hint: 'texto ≥ 7:1' },
+        { label: 'Tema para daltonismo', value: 'cb', hint: 'verde/rojo → azul/naranja' },
+        { label: 'Tema automático', value: 'auto', hint: 'claro u oscuro según la terminal' },
+        { label: 'Comprobar el contraste del tema actual', value: 'check' },
+      ],
+      footer: '↑↓ mover · enter cambiar · esc salir',
+      collapse: false,
+      erase: true,
+    });
+    if (!choice) return;
+    if (choice === 'sr') runtime.save('accessibility.screenReader', !a.screenReader);
+    else if (choice === 'rm') runtime.save('accessibility.reduceMotion', !a.reduceMotion);
+    else if (choice === 'nc') runtime.save('accessibility.noColor', !a.noColor);
+    else if (choice === 'hc') runtime.save('theme', 'alto-contraste');
+    else if (choice === 'cb') runtime.save('theme', 'daltonico');
+    else if (choice === 'auto') runtime.save('theme', 'auto');
+    else if (choice === 'check') {
+      const w = validateContrast(currentTheme().tokens);
+      if (!w.length) ui.success(`El tema ${runtime.themeName()} cumple WCAG AA en todo el texto (≥ 4.5:1).`);
+      else { ui.warn(`El tema ${runtime.themeName()} tiene ${w.length} combinaciones con poco contraste:`); for (const x of w.slice(0, 8)) ui.println(`  ${c.warning('·')} ${x}`); }
+      return;
+    }
+    ui.success(`Accesibilidad actualizada. Tema: ${runtime.themeName()}.`);
+  }
 }
 
 async function mascotCommand(args, ctx) {
@@ -232,6 +270,7 @@ export function customizeCommands({ legacyConfig }) {
   return {
     theme: { description: 'Elige el tema de colores (con vista previa) o crea uno', argumentHint: '[tema]', run: themeCommand },
     mascot: { description: 'Elige tu mascota o crea la tuya (plantilla o PNG)', aliases: ['mascota'], argumentHint: '[import <png> <nombre>]', run: mascotCommand },
+    accessibility: { description: 'Lector de pantalla, reducir movimiento, sin color, temas accesibles', aliases: ['accesibilidad', 'a11y'], run: accessibilityCommand },
     config: {
       description: 'Panel de configuración (o get/set <clave> <valor>)',
       argumentHint: '[get <clave> | set <clave> <valor>]',
