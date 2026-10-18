@@ -1,11 +1,12 @@
 // Decodificador PNG mínimo (8 bits, RGB/RGBA/gris/paleta, sin entrelazado) usando zlib nativo.
 import fs from 'node:fs';
 import zlib from 'node:zlib';
+import { L } from '../i18n.js';
 
 export function decodePNG(file) {
   const buf = fs.readFileSync(file);
   const sig = [137, 80, 78, 71, 13, 10, 26, 10];
-  if (!sig.every((b, i) => buf[i] === b)) throw new Error('No es un archivo PNG válido');
+  if (!sig.every((b, i) => buf[i] === b)) throw new Error(L('No es un archivo PNG válido', 'Not a valid PNG file'));
   let pos = 8;
   let width = 0, height = 0, bitDepth = 0, colorType = 0, interlace = 0;
   let palette = null, trns = null;
@@ -26,10 +27,10 @@ export function decodePNG(file) {
     else if (type === 'IEND') break;
     pos += 12 + len;
   }
-  if (bitDepth !== 8) throw new Error(`Profundidad de ${bitDepth} bits no soportada (usa PNG de 8 bits)`);
-  if (interlace) throw new Error('PNG entrelazado no soportado');
+  if (bitDepth !== 8) throw new Error(L(`Profundidad de ${bitDepth} bits no soportada (usa PNG de 8 bits)`, `${bitDepth}-bit depth not supported (use an 8-bit PNG)`));
+  if (interlace) throw new Error(L('PNG entrelazado no soportado', 'Interlaced PNG not supported'));
   const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[colorType];
-  if (!channels) throw new Error(`Tipo de color PNG ${colorType} no soportado`);
+  if (!channels) throw new Error(L(`Tipo de color PNG ${colorType} no soportado`, `PNG color type ${colorType} not supported`));
   const raw = zlib.inflateSync(Buffer.concat(idat));
   const stride = width * channels;
   const out = Buffer.alloc(width * height * 4);

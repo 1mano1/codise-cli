@@ -6,6 +6,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { HOME } from './config.js';
 import { readJSON, listDirs } from './util/fs.js';
+import { L } from './i18n.js';
 
 const MANIFESTS = ['.codice-plugin/plugin.json', '.claude-plugin/plugin.json', 'plugin.json'];
 const MARKETS = ['.codice-plugin/marketplace.json', '.claude-plugin/marketplace.json', 'marketplace.json'];
@@ -77,7 +78,7 @@ function isGitSource(s) {
 function gitClone(src, dest) {
   const url = /^[\w.-]+\/[\w.-]+$/.test(src) ? `https://github.com/${src}.git` : src;
   const r = spawnSync('git', ['clone', '--depth', '1', url, dest], { encoding: 'utf8' });
-  if (r.status !== 0) throw new Error(`git clone falló: ${(r.stderr || r.error?.message || '').trim()}`);
+  if (r.status !== 0) throw new Error(L(`git clone falló: ${(r.stderr || r.error?.message || '').trim()}`, `git clone failed: ${(r.stderr || r.error?.message || '').trim()}`));
 }
 
 // source: carpeta local, URL git, "usuario/repo" o "plugin@origen" (marketplace).
@@ -90,7 +91,7 @@ export function installPlugin(source) {
   let base = src;
   let tmp = null;
   if (!fs.existsSync(src)) {
-    if (!isGitSource(src)) throw new Error(`No encuentro "${src}" (ni carpeta local ni repositorio git)`);
+    if (!isGitSource(src)) throw new Error(L(`No encuentro "${src}" (ni carpeta local ni repositorio git)`, `"${src}" not found (neither a local folder nor a git repository)`));
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codice-plugin-'));
     gitClone(src, path.join(tmp, 'repo'));
     base = path.join(tmp, 'repo');
@@ -101,10 +102,10 @@ export function installPlugin(source) {
     if (market && (pluginName || !readManifest(base))) {
       if (!pluginName) {
         const names = market.plugins.map((p) => p.name).join(', ');
-        throw Object.assign(new Error(`Es un marketplace. Elige un plugin: ${names}. Ejemplo: /plugin install ${market.plugins[0]?.name}@${source}`), { marketplace: market.plugins });
+        throw Object.assign(new Error(L(`Es un marketplace. Elige un plugin: ${names}. Ejemplo: /plugin install ${market.plugins[0]?.name}@${source}`, `This is a marketplace. Pick a plugin: ${names}. Example: /plugin install ${market.plugins[0]?.name}@${source}`)), { marketplace: market.plugins });
       }
       const entry = market.plugins.find((p) => p.name === pluginName);
-      if (!entry) throw new Error(`El marketplace no contiene "${pluginName}"`);
+      if (!entry) throw new Error(L(`El marketplace no contiene "${pluginName}"`, `The marketplace does not contain "${pluginName}"`));
       const s = entry.source;
       if (typeof s === 'string' && !isGitSource(s)) pluginDir = path.resolve(base, s);
       else {
@@ -115,7 +116,7 @@ export function installPlugin(source) {
       }
     }
     const man = readManifest(pluginDir);
-    if (!man) throw new Error('No parece un plugin: falta plugin.json y no tiene skills/, agents/ ni commands/');
+    if (!man) throw new Error(L('No parece un plugin: falta plugin.json y no tiene skills/, agents/ ni commands/', 'Not a plugin: plugin.json is missing and there are no skills/, agents/ or commands/ folders'));
     const name = String(man.name || path.basename(pluginDir)).replace(/[^\w.-]/g, '-');
     const dest = path.join(PLUGINS_DIR(), name);
     fs.rmSync(dest, { recursive: true, force: true });
@@ -129,6 +130,6 @@ export function installPlugin(source) {
 
 export function removePlugin(name) {
   const dest = path.join(PLUGINS_DIR(), name);
-  if (!fs.existsSync(dest)) throw new Error(`No está instalado el plugin "${name}"`);
+  if (!fs.existsSync(dest)) throw new Error(L(`No está instalado el plugin "${name}"`, `Plugin "${name}" is not installed`));
   fs.rmSync(dest, { recursive: true, force: true });
 }

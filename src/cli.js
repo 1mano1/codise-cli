@@ -2,6 +2,8 @@
 import fs from 'node:fs';
 import { VERSION, APP_NAME } from './config.js';
 import { c } from './ui/theme.js';
+import { setLanguage, L } from './i18n.js';
+import { loadSettings, findProjectRoot } from './config.js';
 
 const HELP = `${APP_NAME} ${VERSION} — agente de programación open source para modelos locales, en la nube o en tu PC remota
 
@@ -42,6 +44,45 @@ Subcomandos:
   codice bench                       Mide velocidad y soporte de herramientas de tus modelos
 `;
 
+const HELP_EN = `${APP_NAME} ${VERSION} — open-source coding agent for local, cloud or your own remote models
+
+Usage:
+  codice [task]                      Interactive console (optionally with an initial task)
+  codice -p "task"                   Run one task and exit (accepts piped input)
+
+Options:
+  -m, --model <model>                Model (accepts provider:model)
+      --provider <name>              Provider: ollama, lmstudio, llamacpp, vllm, jan, openrouter, openai…
+      --base-url <url>               OpenAI-compatible server (or --provider-type ollama|codice)
+      --api-key <key>                API key for --base-url
+  -c, --continue                     Resume the last conversation in this folder
+  -r, --resume <id>                  Resume a specific conversation
+      --permission-mode <mode>       default | acceptEdits | plan | bypass
+      --yolo                         Never ask for permission (same as bypass)
+      --tool-mode <mode>             auto | native | prompt
+      --offline                      Disable network tools
+      --output-format <fmt>          text | json (with -p)
+      --theme <theme>                auto | brasa | alba | medianoche | daltonico | alto-contraste | fosforo
+      --screen-reader                Screen-reader friendly output
+      --reduce-motion                No animations
+      --no-color                     No colors (NO_COLOR is also respected)
+      --no-mcp                       Do not connect MCP servers
+      --cwd <path>                   Working directory
+  -v, --version                      Version
+  -h, --help                         This help
+
+Subcommands:
+  codice models                      List the provider models
+  codice doctor                      Check installation and connection
+  codice mcp list|add|remove         Manage MCP servers
+  codice plugin install|list|remove  Manage plugins
+  codice agents                      List agents
+  codice config get|set <key> [value]
+  codice serve                       Share this PC's models with other machines
+  codice connect <url> --token <t>   Use the models of a PC running "codice serve"
+  codice bench                       Measure speed and tool support of your models
+`;
+
 export function parseArgs(argv) {
   const o = { _: [] };
   const takes = new Set(['model', 'provider', 'base-url', 'api-key', 'resume', 'permission-mode', 'tool-mode', 'output-format', 'theme', 'cwd', 'provider-type', 'token', 'name', 'port', 'host', 'backend', 'backend-url', 'cert', 'key', 'models']);
@@ -74,7 +115,11 @@ async function readStdin() {
 export async function main(argv) {
   const o = parseArgs(argv);
   if (o.version) { console.log(`codice ${VERSION}`); return; }
-  if (o.help) { console.log(HELP); return; }
+  if (o.help) {
+    try { setLanguage(loadSettings(findProjectRoot(process.cwd())).language); } catch { /* idioma por defecto */ }
+    console.log(L(HELP, HELP_EN));
+    return;
+  }
   if (o.cwd) process.chdir(o.cwd);
 
   const sub = o._[0];
@@ -99,7 +144,7 @@ export async function main(argv) {
   let session = null;
   if (o.continue) session = Session.latest(runtime.cwd);
   else if (typeof o.resume === 'string') session = Session.load(o.resume);
-  if ((o.continue || o.resume) && !session && o.resume !== true) console.error(c.warning('No encontré una conversación para retomar; empiezo una nueva.'));
+  if ((o.continue || o.resume) && !session && o.resume !== true) console.error(c.warning(L('No encontré una conversación para retomar; empiezo una nueva.', 'No conversation to resume; starting a new one.')));
   session ||= new Session({ cwd: runtime.cwd });
 
   if (o.mcp !== false && !o['no-mcp']) await runtime.startMcp();
@@ -107,7 +152,7 @@ export async function main(argv) {
   if (o.print) {
     const stdin = await readStdin();
     const task = [typeof o.print === 'string' ? o.print : o._.join(' '), stdin.trim() ? `\n\n<stdin>\n${stdin}\n</stdin>` : ''].join('').trim();
-    if (!task) { console.error('Indica una tarea: codice -p "…"'); process.exitCode = 2; return; }
+    if (!task) { console.error(L('Indica una tarea: codice -p "…"', 'Provide a task: codice -p "…"')); process.exitCode = 2; return; }
     const { runPrint } = await import('./print.js');
     process.exitCode = await runPrint(runtime, task, { session, outputFormat: o['output-format'] });
     return;

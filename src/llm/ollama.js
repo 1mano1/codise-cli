@@ -1,6 +1,7 @@
 // Cliente para la API nativa de Ollama (/api/chat): permite fijar num_ctx y soporta tools y "thinking".
 import { ndjson } from './stream.js';
 import { LLMError, looksLikeToolsUnsupported, safeFetch } from './openai.js';
+import { L } from '../i18n.js';
 
 function safeParse(s) {
   if (s && typeof s === 'object') return s;
@@ -28,7 +29,7 @@ export class OllamaClient {
 
   async listModels() {
     const res = await safeFetch(`${this.baseUrl}/api/tags`, { headers: this.headers(), signal: AbortSignal.timeout(8000) }, this.label);
-    if (!res.ok) throw new LLMError(`HTTP ${res.status} al listar modelos`, { status: res.status });
+    if (!res.ok) throw new LLMError(L(`HTTP ${res.status} al listar modelos`, `HTTP ${res.status} while listing models`), { status: res.status });
     const j = await res.json();
     return (j.models || []).map((m) => ({ id: m.name, size: m.size || null, details: m.details || null }));
   }
