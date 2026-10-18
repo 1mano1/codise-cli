@@ -110,6 +110,11 @@ export class Agent {
     let turns = 0;
     let finalText = '';
     let stopRetries = 0;
+    // Protección contra bucles (frecuentes en modelos pequeños)
+    this.callCounts = new Map();
+    this.mutations = 0;
+    this.loopHits = 0;
+    this.errorStreak = 0;
     while (turns < maxTurns) {
       turns++;
       if (signal?.aborted) throw abortError();
@@ -145,6 +150,16 @@ export class Agent {
       }
       for (const r of results) this.messages.push({ role: 'tool', tool_call_id: r.id, name: r.name, content: r.content });
       if (results.some((r) => r.userDenied) && !this.isSub) return { text: '', turns, tokens: this.usage.input + this.usage.output, stopped: true };
+      if (this.loopHits >= 3) {
+        const msg = L('Detuve la tarea: el modelo repetía las mismas acciones sin avanzar. Prueba con un modelo más grande o divide la tarea en pasos más pequeños.', 'I stopped the task: the model kept repeating the same actions without progress. Try a larger model or split the task into smaller steps.');
+        this.view.notice(msg);
+        return { text: msg, turns, tokens: this.usage.input + this.usage.output, stuck: true };
+      }
+      this.errorStreak = results.every((r) => r.isError) ? this.errorStreak + 1 : 0;
+      if (this.errorStreak >= 3) {
+        this.errorStreak = 0;
+        this.messages.push({ role: 'user', content: 'Several attempts in a row failed. Before trying again: use Read to see the CURRENT content of the relevant files, briefly explain what is wrong, then make one careful change.' });
+      }
     }
     return { text: `${finalText}\n\n${L(`(Se alcanzó el límite de ${maxTurns} pasos.)`, `(Reached the limit of ${maxTurns} steps.)`)}`, turns, tokens: this.usage.input + this.usage.output };
   }
@@ -249,6 +264,16 @@ export class Agent {
     const ctx = { runtime: rt, cwd: rt.cwd, signal, agent: this, depth: this.depth, agentLabel: this.label, ui: rt.ui.forTool(deferred) };
     let summary = '';
     try { summary = tool.summary ? String(tool.summary(args, ctx) ?? '') : ''; } catch { summary = ''; }
+    // Misma llamada repetida: las ediciones idénticas cuentan siempre; el resto solo si nada cambió entre medias.
+    const sig = `${tool.name}:${JSON.stringify(args)}${tool.edits ? '' : `#${this.mutations || 0}`}`;
+    const seen = (this.callCounts?.get(sig) || 0) + 1;
+    this.callCounts?.set(sig, seen);
+    if (seen >= 3 && !tool.parallelSafe && tool.name !== 'TodoWrite') {
+      this.loopHits = (this.loopHits || 0) + 1;
+      this.view.toolStart(tool.name, summary);
+      this.view.toolEnd(tool.name, summary, { ok: false, text: L('Llamada repetida bloqueada', 'Repeated call blocked') });
+      return { ...base, isError: true, content: `You already made this exact ${tool.name} call ${seen - 1} times. Do NOT repeat it. Use Read to look at the CURRENT content of the file, think about why it did not work, and try a different approach.` };
+    }
     this.view.toolStart(tool.name, summary);
     const perm = await rt.permissions.check(tool, args, ctx);
     if (!perm.allowed) {
@@ -271,14 +296,15 @@ export class Agent {
       this.view.toolEnd(tool.name, summary, { ok: !r.isError, text: display });
       for (const f of deferred) f();
       rt.lastToolOutput = { name: tool.name, content: String(r.content ?? '') };
-      return { ...base, content: content || '(no output)' };
+      if (tool.edits && !r.isError) this.mutations = (this.mutations || 0) + 1;
+      return { ...base, content: content || '(no output)', isError: Boolean(r.isError) };
     } catch (e) {
       if (e.name === 'AbortError' || signal?.aborted) {
         this.view.toolEnd(tool.name, summary, { ok: false, text: L('Interrumpido', 'Interrupted') });
         throw abortError();
       }
       this.view.toolEnd(tool.name, summary, { ok: false, text: e.message });
-      return { ...base, content: `Error: ${e.message}` };
+      return { ...base, content: `Error: ${e.message}`, isError: true };
     }
   }
 

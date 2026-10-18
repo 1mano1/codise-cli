@@ -151,12 +151,32 @@ export async function e2eTests(t) {
       const en = { cwd, home: enHome };
       const help = await runCli(['--help'], en);
       assert(help.stdout.includes('Interactive console'), '--help en inglés');
-      m.push({ content: 'Hello!' });
       const r = await runCli([...base], { ...en, input: '/help\n/exit\n' });
       assert(r.stdout.includes('/help commands') && r.stdout.includes('Show commands and shortcuts'), 'consola en inglés');
       assert(!r.stdout.includes('Muestra los comandos'), 'sin textos en español');
       const err = await runCli(['-p', 'hi', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'x'], en);
       assert(/Could not connect/.test(err.stderr), `error en inglés: ${err.stderr}`);
+    });
+
+    await t('detector de bucles: bloquea llamadas repetidas y detiene la tarea', async (assert) => {
+      // 2 se ejecutan, las 3 siguientes se bloquean y la tarea se detiene
+      for (let i = 0; i < 5; i++) m.push({ toolCalls: [{ name: 'LS', args: {} }] });
+      const r = await runCli(['-p', 'lista', '--yolo', ...base], opts);
+      assert(r.stderr.includes('Detuve la tarea'), `salida: ${r.stderr}`);
+      assert(r.stderr.includes('Llamada repetida bloqueada'), 'llamada repetida marcada');
+    });
+
+    await t('-p no se cuelga si stdin queda abierto sin datos', async (assert) => {
+      m.push({ content: 'Respuesta sin stdin.' });
+      const r = await new Promise((resolve) => {
+        const p = spawn(process.execPath, [BIN, '-p', 'hola', ...base], { cwd, env: { ...process.env, CODICE_HOME: home, NO_COLOR: '1' } });
+        let stdout = '';
+        p.stdout.on('data', (d) => { stdout += d; });
+        const t0 = setTimeout(() => { p.kill(); resolve({ status: 'timeout', stdout }); }, 15000);
+        p.on('close', (status) => { clearTimeout(t0); resolve({ status, stdout }); });
+        // stdin queda abierto a propósito
+      });
+      assert(r.status === 0 && r.stdout.includes('Respuesta sin stdin.'), `estado ${r.status}: ${r.stdout}`);
     });
 
     await t('error de conexión con mensaje accionable', async (assert) => {

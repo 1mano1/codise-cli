@@ -27,6 +27,8 @@ const CORE_RULES = `# How to work
 - Read a file before editing it. Prefer Edit for existing files; use Write only for new files or full rewrites.
 - Follow the existing style, libraries and conventions of the project.
 - After changing code, verify it (run the tests, build or linter) when a command exists.
+- If a verification fails after an edit, Read the file again to see its CURRENT content before editing. Never repeat the same edit; when an edit does not help, change the approach.
+- In Edit, old_string must be the exact text you want to REPLACE (it is removed), not just a nearby line.
 - Use only the tools provided, with valid JSON arguments. If a tool fails, read the error and adjust.
 - For tasks with several steps, keep a task list with TodoWrite and update it as you go.
 - Delegate broad searches or independent sub-tasks to subagents with Task (several Task calls run in parallel).

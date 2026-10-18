@@ -245,3 +245,19 @@ Pendiente:
   Python; no se pueden usar directamente). Opciones: instalar Ollama + `ollama pull qwen2.5-coder:3b`, o una API key
   con nivel gratuito (Gemini, Groq, OpenRouter `:free`).
 - Las suscripciones de chat (Claude Pro/Max, ChatGPT Plus) no se pueden usar en apps de terceros: solo API keys.
+
+## Modelo local del usuario (2026-10-18)
+
+- Sus modelos en Hugging Face (cuenta **Imanol11**, https://huggingface.co/Imanol11): `qwen0.5b-int4-Octuma`,
+  `qwen1.5b-int4-Octuma`, `qwen3b-int4-Octuma`, cuantizados con su librería **Octuma**
+  (https://github.com/1mano1/octuma). Cada uno trae `.gguf` (llama.cpp) y `.tq.safetensors` (PyTorch).
+- Descargado: `C:\ProyectosIA_Imanol\modelos\qwen3b-int4.gguf` (2.40 GB, SHA-256 verificado).
+  Licencia Qwen Research (solo no comercial).
+- llama.cpp b11381 (builds Vulkan y CPU) en `C:\ProyectosIA_Imanol\modelos\llama.cpp\`.
+  Arranque: `C:\ProyectosIA_Imanol\modelos\iniciar-octuma.cmd` → servidor en `http://127.0.0.1:8080`
+  (proveedor `llamacpp` de Códice, modelo `qwen3b-int4-octuma`).
+- Medido en la laptop (Ryzen 5 5500U, 16 GB, Radeon integrada): ~14 tokens/s, primer token 0.5 s,
+  **tool calling nativo** (`codice bench`).
+- Prueba real: el 3B usa herramientas bien pero no resuelve bugs de lógica sencillos y tiende a repetir
+  acciones → se añadió detector de bucles y fragmento post-Edit (`fix/small-model-robustness`).
+  Para código conviene 7B+ (o API).

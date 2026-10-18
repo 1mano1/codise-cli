@@ -150,8 +150,14 @@ export const Edit = {
     fs.writeFileSync(r.p, r.crlf ? r.updated.replace(/\n/g, '\r\n') : r.updated);
     const st = diffStats(r.content, r.updated);
     ctx.ui?.diff(r.content, r.updated, 1);
+    // El modelo ve cómo quedó la zona editada (ayuda mucho a los modelos pequeños a no repetir errores).
+    const lines = r.updated.split('\n');
+    const newLen = String(a.new_string ?? '').split('\n').length;
+    const from = Math.max(1, r.startLine - 3);
+    const to = Math.min(lines.length, r.startLine + newLen + 3);
+    const snippet = lines.slice(from - 1, to).map((l, i) => `${String(from + i).padStart(6)}\t${l}`).join('\n');
     return {
-      content: `File edited: ${r.p} (${r.count} replacement${r.count > 1 ? 's' : ''}, from line ${r.startLine})`,
+      content: `File edited: ${r.p} (${r.count} replacement${r.count > 1 ? 's' : ''}, from line ${r.startLine}). Current content of the edited region:\n${snippet}`,
       display: L(`${r.count} cambio${r.count > 1 ? 's' : ''} · +${st.added} −${st.removed}`, `${r.count} change${r.count > 1 ? 's' : ''} · +${st.added} −${st.removed}`),
     };
   },
