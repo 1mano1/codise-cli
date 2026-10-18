@@ -50,7 +50,7 @@ export async function e2eTests(t) {
       const r = await runCli(['-p', 'ejecuta echo', ...base], opts);
       const last = m.requests.at(-1).body.messages.at(-1);
       assert(r.status === 0, `código ${r.status}`);
-      assert(last.role === 'tool' && last.content.startsWith('Permiso denegado'), `resultado: ${last.content}`);
+      assert(last.role === 'tool' && last.content.startsWith('Permission denied'), `resultado: ${last.content}`);
     });
 
     await t('modelo sin tools nativas: cambia a modo prompt', async (assert) => {
@@ -147,7 +147,7 @@ export async function e2eTests(t) {
     await t('error de conexión con mensaje accionable', async (assert) => {
       const r = await runCli(['-p', 'hola', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'x'], opts);
       assert(r.status === 1, `código ${r.status}`);
-      assert(/No se pudo conectar/.test(r.stderr), r.stderr);
+      assert(/No pude conectar/.test(r.stderr), r.stderr);
     });
   } finally {
     await m.close();

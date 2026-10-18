@@ -2,6 +2,7 @@
 import { c, style, stripAnsi, visibleWidth, colorLevel } from './theme.js';
 import { renderMascot } from './mascot.js';
 import { formatDuration, formatTokens } from '../util/fs.js';
+import { L } from '../i18n.js';
 
 const opts = { screenReader: false, reduceMotion: false, stream: process.stdout };
 let lastChar = '\n';
@@ -70,18 +71,34 @@ function fit(s, max = width() - 1) {
 // ── Mensajes simples ─────────────────────────────────────────────
 export function info(msg) { ensureNewline(); println(c.muted(msg)); }
 export function success(msg) { ensureNewline(); println(`${c.success('✓', { bold: true })} ${c.primary(msg)}`); }
-export function warn(msg) { ensureNewline(); println(`${c.warning('⚠', { bold: true })} ${c.warning(msg)}`); }
-export function hint(msg) { ensureNewline(); println(c.dim(msg)); }
+export function warn(msg) { ensureNewline(); for (const [i, l] of wrap(msg, width() - 3).entries()) println(`${i ? ' ' : c.warning('⚠', { bold: true })} ${c.warning(l)}`); }
+export function hint(msg) { ensureNewline(); for (const l of wrap(msg, width() - 1)) println(c.dim(l)); }
 
+// Ajusta texto plano al ancho (por palabras).
+export function wrap(text, max = width() - 2) {
+  const out = [];
+  for (const para of String(text).split('\n')) {
+    let line = '';
+    for (const word of para.split(' ')) {
+      if (line && visibleWidth(line) + 1 + visibleWidth(word) > max) { out.push(line); line = word; }
+      else line = line ? `${line} ${word}` : word;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+// Error en dos líneas: qué pasó y qué hacer. La causa técnica solo si no hay acción sugerida.
 export function errorBox(title, cause, action) {
   ensureNewline();
   if (opts.screenReader) {
-    println(`Error: ${title}.${cause ? ` Causa: ${cause}.` : ''}${action ? ` Qué hacer: ${action}` : ''}`);
+    println(`Error: ${title}.${action ? ` ${action}` : cause ? ` ${cause}.` : ''}`);
     return;
   }
-  const lines = [`${c.error(`✗ ${title}`, { bold: true })}${cause ? c.muted(` · ${cause}`) : ''}`];
-  if (action) lines.push(c.primary(action));
-  box(lines, { border: 'status/error', bg: null });
+  println(`${c.error('✗', { bold: true })} ${c.error(title, { bold: true })}`);
+  const detail = action || cause;
+  if (detail) for (const l of wrap(detail, width() - 3)) println(`  ${action ? c.primary(l) : c.dim(l)}`);
+  if (action && cause && process.env.CODICE_DEBUG) println(`  ${c.dim(cause)}`);
 }
 
 export function box(lines, { border = 'border/default', title = null, padding = 1 } = {}) {
@@ -91,12 +108,13 @@ export function box(lines, { border = 'border/default', title = null, padding = 
     for (const l of lines) println(stripAnsi(l));
     return;
   }
-  const w = Math.min(width() - 2, Math.max(...lines.map(visibleWidth), title ? visibleWidth(title) + 4 : 0) + padding * 2 + 2);
+  const maxInner = width() - 4 - padding * 2;
+  const rows = lines.flatMap((l) => (visibleWidth(l) > maxInner && !/\x1b/.test(l) ? wrap(l, maxInner) : [l]));
+  const w = Math.min(width() - 2, Math.max(...rows.map(visibleWidth), title ? visibleWidth(title) + 4 : 0) + padding * 2 + 2);
   const inner = w - 2;
   const b = (s) => style(s, { fg: border });
-  const top = title ? `╭─ ${title} ${'─'.repeat(Math.max(0, inner - visibleWidth(title) - 3))}╮` : `╭${'─'.repeat(inner)}╮`;
-  println(title ? b('╭─ ') + title + b(` ${'─'.repeat(Math.max(0, inner - visibleWidth(title) - 3))}╮`) : b(top));
-  for (const l of lines) {
+  println(title ? b('╭─ ') + title + b(` ${'─'.repeat(Math.max(0, inner - visibleWidth(title) - 3))}╮`) : b(`╭${'─'.repeat(inner)}╮`));
+  for (const l of rows) {
     const content = fit(l, inner - padding * 2);
     const pad = inner - padding * 2 - visibleWidth(content);
     println(`${b('│')}${' '.repeat(padding)}${content}${' '.repeat(Math.max(0, pad))}${' '.repeat(padding)}${b('│')}`);
@@ -105,7 +123,7 @@ export function box(lines, { border = 'border/default', title = null, padding = 
 }
 
 // ── Banner de inicio ─────────────────────────────────────────────
-const BANNER = [
+export const BANNER = [
   '            ▄█▀',
   ' ██████   ██████  ██████  ██  ██████ ███████',
   '██       ██    ██ ██   ██ ██ ██      ██     ',
@@ -114,39 +132,38 @@ const BANNER = [
   ' ██████   ██████  ██████  ██  ██████ ███████',
 ];
 
-export function banner({ version, model, provider, providerUrl, cwd, memory, resources, mascot }) {
-  if (opts.screenReader) {
-    println(`Códice ${version}. Agente de programación open source.`);
-    println(`Modelo ${model || 'sin elegir'} vía ${provider}. Directorio ${cwd}.`);
-    println('Escribe /help para ver los comandos.');
-    return;
-  }
+export function artWithMascot(mascot, { state = 'idle' } = {}) {
   const art = BANNER.map((l) => c.accent(l, { bold: true }));
-  const pet = renderMascot(mascot, 'idle');
+  const pet = renderMascot(mascot, state);
   const showPet = pet.length && width() >= 70;
   const rows = Math.max(art.length, showPet ? pet.length : 0);
   const offset = showPet ? Math.max(0, Math.floor((art.length - pet.length) / 2)) : 0;
-  println('');
+  const out = [];
   for (let i = 0; i < rows; i++) {
     const left = art[i] || '';
     const pad = showPet ? ' '.repeat(Math.max(0, 46 - visibleWidth(left))) : '';
-    const right = showPet ? (pet[i - offset] || '') : '';
-    println(`${left}${pad}${right}`);
+    out.push(`${left}${pad}${showPet ? (pet[i - offset] || '') : ''}`);
+  }
+  return out;
+}
+
+// Pantalla de inicio mínima: marca, una línea de estado y una de ayuda.
+export function banner({ version, model, provider, cwd, memory, mascot }) {
+  if (opts.screenReader) {
+    println(L(`Códice ${version}. Agente de programación open source.`, `Códice ${version}. Open-source coding agent.`));
+    println(model ? L(`Modelo ${model} vía ${provider}.`, `Model ${model} via ${provider}.`) : L('Sin modelo configurado. Escribe /setup.', 'No model configured. Type /setup.'));
+    println(L('Escribe /help para ver los comandos.', 'Type /help to see the commands.'));
+    return;
   }
   println('');
-  println(`${c.primary('codice', { bold: true })} ${c.muted(`v${version}`)}  ${c.dim('·')}  ${c.dim('agente de programación open source para modelos locales y remotos')}`);
-  const lines = [
-    `${c.dim('modelo     ')}${model ? c.soft(model, { bold: true }) : c.warning('sin elegir — usa /model')}  ${c.muted(`vía ${provider}${providerUrl ? ` (${providerUrl})` : ''}`)}`,
-    `${c.dim('directorio ')}${c.info(cwd)}`,
-  ];
-  if (memory?.length) lines.push(`${c.dim('memoria    ')}${memory.map((m, i) => (i ? c.muted(m) : c.primary(m))).join(c.muted(' · '))}`);
-  if (resources) lines.push(`${c.dim('recursos   ')}${resources}`);
-  box(lines);
+  for (const l of artWithMascot(mascot)) println(l);
   println('');
-  println(c.muted('Consejos', { bold: true }));
-  println(`  ${c.accent('/help')}  ${c.muted('ver comandos')}     ${c.accent('/model')}  ${c.muted('cambiar modelo')}     ${c.accent('/init')}  ${c.muted('crear CODICE.md')}`);
-  println(`  ${c.accent('!')}  ${c.muted('ejecutar shell')}   ${c.accent('#')}  ${c.muted('guardar en memoria')}     ${c.accent('@')}  ${c.muted('adjuntar archivo')}`);
-  println(`  ${c.accent('esc')}  ${c.muted('interrumpir')}     ${c.accent('shift+tab')}  ${c.muted('cambiar modo de permisos')}`);
+  const parts = [`${c.primary('codice', { bold: true })} ${c.muted(`v${version}`)}`];
+  parts.push(model ? `${c.soft(model, { bold: true })} ${c.dim(`(${provider})`)}` : c.warning(L('sin modelo — escribe /setup', 'no model — type /setup')));
+  parts.push(c.info(cwd));
+  if (memory?.length) parts.push(c.muted(memory[0]));
+  println(parts.join(c.dim('  ·  ')));
+  println(c.dim(L('/help comandos · /theme tema · shift+tab modo · esc interrumpir', '/help commands · /theme theme · shift+tab mode · esc interrupt')));
   println('');
 }
 
@@ -192,7 +209,7 @@ export class MarkdownStream {
     if (/^\s*```/.test(line)) {
       this.inCode = !this.inCode;
       const lang = line.trim().slice(3);
-      println(p + c.dim(this.inCode ? `╭─ ${lang || 'código'}` : '╰─'));
+      println(p + c.dim(this.inCode ? `╭─ ${lang || L('código', 'code')}` : '╰─'));
       return;
     }
     if (this.inCode) { println(p + c.dim('│ ') + c.muted(line)); return; }
@@ -240,10 +257,10 @@ export class Spinner {
     this.t0 = Date.now();
     this.tokens = 0;
     this.active = true;
-    if (opts.screenReader) { ensureNewline(); println(`${label ? `${label}: ` : ''}Trabajando…`); this.active = false; return; }
+    if (opts.screenReader) { ensureNewline(); println(`${label ? `${label}: ` : ''}${L('Trabajando…', 'Working…')}`); this.active = false; return; }
     if (!opts.stream.isTTY || opts.reduceMotion) {
       ensureNewline();
-      opts.stream.write(`${c.soft('✻')} ${c.soft(verb, { italic: true })} ${c.dim('(esc para interrumpir)')}`);
+      opts.stream.write(`${c.soft('✻')} ${c.soft(verb, { italic: true })} ${c.dim(L('(esc para interrumpir)', '(esc to interrupt)'))}`);
       this.static = true;
       return;
     }
@@ -252,7 +269,7 @@ export class Spinner {
     this.draw = () => {
       const secs = formatDuration(Date.now() - this.t0);
       const tk = this.tokens ? ` · ↓ ${formatTokens(this.tokens)} tokens` : '';
-      const line = `${c.soft(FRAMES[i++ % FRAMES.length])} ${this.label ? c.agent(`${this.label} `) : ''}${c.soft(this.verb, { italic: true })} ${c.dim(`(${secs}${tk} · esc para interrumpir)`)}`;
+      const line = `${c.soft(FRAMES[i++ % FRAMES.length])} ${this.label ? c.agent(`${this.label} `) : ''}${c.soft(this.verb, { italic: true })} ${c.dim(`(${secs}${tk} · ${L('esc para interrumpir', 'esc to interrupt')})`)}`;
       opts.stream.write(`\r\x1b[2K${fit(line)}`);
     };
     this.draw();
@@ -289,7 +306,7 @@ export function toolStart(name, summary, { indent = '' } = {}) {
 
 export function toolEnd(name, summary, { ok, text, indent = '' }) {
   if (opts.screenReader) {
-    println(`Herramienta ${name}${ok ? ', correcta' : ', con error'}${summary ? `: ${summary}` : ''}. ${text || ''}`.trim());
+    println(`${L('Herramienta', 'Tool')} ${name}${ok ? L(', correcta', ', succeeded') : L(', con error', ', failed')}${summary ? `: ${summary}` : ''}. ${text || ''}`.trim());
     return;
   }
   if (headerMark && headerMark.name === name && opts.stream.isTTY && colorLevel() > 0) {
@@ -305,14 +322,14 @@ export function toolEnd(name, summary, { ok, text, indent = '' }) {
   if (text) {
     const first = String(text).split('\n');
     const main = first[0];
-    const lineTxt = ok ? c.dim(main) : c.error(`Error: ${main.replace(/^Error:\s*/i, '')}`);
+    const lineTxt = ok ? c.dim(main) : c.error(`${L('Error', 'Error')}: ${main.replace(/^Error:\s*/i, '')}`);
     println(fit(`${indent}  ${c.dim('└')} ${lineTxt}`));
     if (ok) for (const extra of first.slice(1, 4)) println(fit(`${indent}    ${c.dim(extra)}`));
   }
 }
 
 export function subStep(agentLabel, name, summary) {
-  if (opts.screenReader) { println(`Subagente ${agentLabel}: ${name} ${summary || ''}`); return; }
+  if (opts.screenReader) { println(`${L('Subagente', 'Subagent')} ${agentLabel}: ${name} ${summary || ''}`); return; }
   ensureNewline();
   println(fit(`    ${c.agent('↳', { bold: true })} ${c.agent(agentLabel.padEnd(9))}${style(name, { bold: true, fg: 'text/muted' })}${summary ? c.dim(`(${summary})`) : ''}`));
 }
@@ -345,7 +362,7 @@ export function diffLines(oldText, newText, { startLine = 1, maxLines = 24, inde
   const d = lcsDiff(String(oldText).split('\n'), String(newText).split('\n'));
   if (opts.screenReader) {
     const st = diffStats(oldText, newText);
-    return [`Cambios: ${st.added} líneas añadidas, ${st.removed} eliminadas.`];
+    return [L(`Cambios: ${st.added} líneas añadidas, ${st.removed} eliminadas.`, `Changes: ${st.added} lines added, ${st.removed} removed.`)];
   }
   const lines = [];
   const keep = new Array(d.length).fill(false);
@@ -359,7 +376,7 @@ export function diffLines(oldText, newText, { startLine = 1, maxLines = 24, inde
     if (sign !== '-') newNo++;
     if (!keep[k]) { skipped = true; continue; }
     if (skipped) { lines.push(indent + c.dim('   ⋮')); skipped = false; }
-    if (shown++ >= maxLines) { lines.push(indent + c.dim(`   … ${d.length - k} líneas más`)); break; }
+    if (shown++ >= maxLines) { lines.push(indent + c.dim(L(`   … ${d.length - k} líneas más`, `   … ${d.length - k} more lines`))); break; }
     const num = `${String(no).padStart(4)} `;
     const code = fit(text, w - num.length - 2);
     const pad = ' '.repeat(Math.max(0, w - num.length - 2 - visibleWidth(code)));
@@ -378,7 +395,7 @@ export function printDiff(oldText, newText, o = {}) {
 // ── Tareas ───────────────────────────────────────────────────────
 export function printTodos(todos) {
   if (opts.screenReader) {
-    todos.forEach((t, i) => println(`Tarea ${i + 1}, ${t.status === 'completed' ? 'hecha' : t.status === 'in_progress' ? 'en curso' : 'pendiente'}: ${t.content}`));
+    todos.forEach((t, i) => println(`${L('Tarea', 'Task')} ${i + 1}, ${t.status === 'completed' ? L('hecha', 'done') : t.status === 'in_progress' ? L('en curso', 'in progress') : L('pendiente', 'pending')}: ${t.content}`));
     return;
   }
   for (const t of todos) {

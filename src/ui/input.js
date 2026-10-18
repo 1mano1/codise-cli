@@ -156,7 +156,8 @@ export class Input {
       const w = width() - 2;
       return items.map((it, i) => {
         const sel = i === this.palette.sel;
-        const src = it.source === 'integrado' ? c.dim(it.source) : it.source === 'skill' ? c.agent(it.source) : c.info(it.source || '');
+        const label = it.label || it.source || '';
+        const src = it.source === 'integrado' ? c.dim(label) : it.source === 'skill' ? c.agent(label) : c.info(label);
         const name = sel ? c.accent(it.name.padEnd(20), { bold: true }) : c.primary(it.name.padEnd(20));
         const desc = (it.description || '').slice(0, Math.max(10, w - 44));
         const line = `${sel ? c.accent('› ', { bold: true }) : '  '}${name}${sel ? c.primary(desc.padEnd(Math.max(10, w - 44))) : c.muted(desc.padEnd(Math.max(10, w - 44)))} ${src}`;
@@ -234,6 +235,21 @@ export class Input {
     });
     this.state = prev === 'busy' ? 'busy' : 'idle';
     return a;
+  }
+
+  // Texto oculto (API keys, tokens): muestra • por cada carácter.
+  async secret(q) {
+    if (!this.tty) return this.question(q);
+    process.stdout.write(q);
+    return new Promise((resolve) => {
+      let value = '';
+      const release = this.modal((s, key = {}) => {
+        if (key.name === 'return' || key.name === 'enter') { release(); process.stdout.write('\n'); resolve(value); }
+        else if (key.name === 'escape' || (key.ctrl && key.name === 'c')) { release(); process.stdout.write('\n'); resolve(null); }
+        else if (key.name === 'backspace') { if (value) { value = value.slice(0, -1); process.stdout.write('\b \b'); } }
+        else if (s && !key.ctrl && !key.meta) { const clean = s.replace(/[\r\n]/g, ''); value += clean; process.stdout.write('•'.repeat(clean.length)); }
+      });
+    });
   }
 
   setBusy(b) {

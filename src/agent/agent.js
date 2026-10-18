@@ -7,12 +7,13 @@ import { estimateContext, summarize, keepFromIndex } from './compact.js';
 import { truncateMiddle, randomId } from '../util/fs.js';
 import { wildcardMatch } from '../util/glob.js';
 import * as ui from '../ui/output.js';
+import { L } from '../i18n.js';
 
 const MAX_DEPTH = 2;
 const SLOW_TOOLS = new Set(['Bash', 'Task', 'WebFetch', 'WebSearch']);
 
 export function abortError() {
-  return Object.assign(new Error('Interrumpido por el usuario'), { name: 'AbortError' });
+  return Object.assign(new Error(L('Interrumpido por el usuario', 'Interrupted by the user')), { name: 'AbortError' });
 }
 
 // ── Vistas: cómo se muestra el trabajo del agente ────────────────
@@ -34,7 +35,7 @@ export function mainView(runtime) {
     toolStart(name, summary) {
       spinner.stop();
       ui.toolStart(name, summary);
-      if (SLOW_TOOLS.has(name) || name.startsWith('mcp__')) spinner.start(name === 'Task' ? 'Subagente trabajando…' : `Ejecutando ${name}…`);
+      if (SLOW_TOOLS.has(name) || name.startsWith('mcp__')) spinner.start(name === 'Task' ? L('Subagente trabajando…', 'Subagent working…') : L(`Ejecutando ${name}…`, `Running ${name}…`));
     },
     toolEnd(name, summary, r) { spinner.stop(); ui.toolEnd(name, summary, r); },
     notice(t) { spinner.stop(); ui.warn(t); },
@@ -145,7 +146,7 @@ export class Agent {
       for (const r of results) this.messages.push({ role: 'tool', tool_call_id: r.id, name: r.name, content: r.content });
       if (results.some((r) => r.userDenied) && !this.isSub) return { text: '', turns, tokens: this.usage.input + this.usage.output, stopped: true };
     }
-    return { text: `${finalText}\n\n(Se alcanzó el límite de ${maxTurns} pasos.)`, turns, tokens: this.usage.input + this.usage.output };
+    return { text: `${finalText}\n\n${L(`(Se alcanzó el límite de ${maxTurns} pasos.)`, `(Reached the limit of ${maxTurns} steps.)`)}`, turns, tokens: this.usage.input + this.usage.output };
   }
 
   async callModel(tools, signal) {
@@ -192,19 +193,19 @@ export class Agent {
         splitter.flush();
         view.endTurn();
         if (e.name === 'AbortError' || signal?.aborted) {
-          this.messages.push({ role: 'assistant', content: `${stripThinking(streamed)}\n[interrumpido por el usuario]`.trim() });
+          this.messages.push({ role: 'assistant', content: `${stripThinking(streamed)}\n[interrupted by the user]`.trim() });
           throw abortError();
         }
         if (e.toolsUnsupported && mode === 'native') {
           rt.setToolMode(client.model, 'prompt');
           mode = 'prompt';
-          view.notice(`${client.model} no soporta herramientas nativas: uso el modo prompt (<tool_call>).`);
+          view.notice(L(`${client.model} no soporta herramientas nativas: uso el modo prompt (<tool_call>).`, `${client.model} does not support native tools: using prompt mode (<tool_call>).`));
           continue;
         }
         throw e;
       }
     }
-    throw new Error('No se pudo obtener respuesta del modelo');
+    throw new Error(L('No se pudo obtener respuesta del modelo', 'Could not get a response from the model'));
   }
 
   async executeCalls(calls, tools, signal) {
@@ -228,7 +229,7 @@ export class Agent {
     for (let i = this.messages.length - 1; i >= 0; i--) if (this.messages[i].role === 'assistant') { idx = i; break; }
     const calls = this.messages[idx]?.tool_calls || [];
     const have = new Set(this.messages.slice(idx + 1).filter((m) => m.role === 'tool').map((m) => m.tool_call_id));
-    for (const tc of calls) if (!have.has(tc.id)) this.messages.push({ role: 'tool', tool_call_id: tc.id, name: tc.function.name, content: 'Interrumpido por el usuario.' });
+    for (const tc of calls) if (!have.has(tc.id)) this.messages.push({ role: 'tool', tool_call_id: tc.id, name: tc.function.name, content: 'Interrupted by the user.' });
   }
 
   findTool(tools, name) {
@@ -239,9 +240,9 @@ export class Agent {
     const rt = this.runtime;
     const base = { id: tc.id, name: tc.name };
     const tool = this.findTool(tools, tc.name);
-    if (!tool) return { ...base, content: `Error: la herramienta "${tc.name}" no existe. Disponibles: ${tools.map((t) => t.name).join(', ')}` };
+    if (!tool) return { ...base, content: `Error: tool "${tc.name}" does not exist. Available: ${tools.map((t) => t.name).join(', ')}` };
     let args;
-    try { args = parseToolArgs(tc.arguments); } catch (e) { return { ...base, content: `Error: argumentos JSON inválidos (${e.message}). Reintenta con JSON válido.` }; }
+    try { args = parseToolArgs(tc.arguments); } catch (e) { return { ...base, content: `Error: invalid JSON arguments (${e.message}). Retry with valid JSON.` }; }
     const invalid = validateArgs(tool, args);
     if (invalid) return { ...base, content: `Error: ${invalid}` };
     const deferred = [];
@@ -251,13 +252,13 @@ export class Agent {
     this.view.toolStart(tool.name, summary);
     const perm = await rt.permissions.check(tool, args, ctx);
     if (!perm.allowed) {
-      this.view.toolEnd(tool.name, summary, { ok: false, text: perm.userDenied ? 'Rechazado por el usuario' : perm.reason });
-      return { ...base, content: `Permiso denegado: ${perm.reason}`, userDenied: perm.userDenied };
+      this.view.toolEnd(tool.name, summary, { ok: false, text: perm.userDenied ? L('Rechazado por el usuario', 'Rejected by the user') : perm.reason });
+      return { ...base, content: `Permission denied: ${perm.reason}`, userDenied: perm.userDenied };
     }
     const pre = await rt.hook('PreToolUse', { tool_name: tool.name, tool_input: args }, tool.name);
     if (pre.blocked) {
-      this.view.toolEnd(tool.name, summary, { ok: false, text: `Bloqueado por hook: ${pre.reason}` });
-      return { ...base, content: `Bloqueado por un hook: ${pre.reason}` };
+      this.view.toolEnd(tool.name, summary, { ok: false, text: L(`Bloqueado por hook: ${pre.reason}`, `Blocked by hook: ${pre.reason}`) });
+      return { ...base, content: `Blocked by a hook: ${pre.reason}` };
     }
     try {
       let r = await tool.run(args, ctx);
@@ -270,10 +271,10 @@ export class Agent {
       this.view.toolEnd(tool.name, summary, { ok: !r.isError, text: display });
       for (const f of deferred) f();
       rt.lastToolOutput = { name: tool.name, content: String(r.content ?? '') };
-      return { ...base, content: content || '(sin salida)' };
+      return { ...base, content: content || '(no output)' };
     } catch (e) {
       if (e.name === 'AbortError' || signal?.aborted) {
-        this.view.toolEnd(tool.name, summary, { ok: false, text: 'Interrumpido' });
+        this.view.toolEnd(tool.name, summary, { ok: false, text: L('Interrumpido', 'Interrupted') });
         throw abortError();
       }
       this.view.toolEnd(tool.name, summary, { ok: false, text: e.message });
@@ -294,7 +295,7 @@ export class Agent {
     if (!ratio || this.messages.length < 4) return;
     const { used, max } = this.contextUsage(tools);
     if (used < max * ratio) return;
-    this.view.notice(`Contexto al ${Math.round((used / max) * 100)} %: compactando la conversación…`);
+    this.view.notice(L(`Contexto al ${Math.round((used / max) * 100)} %: compactando la conversación…`, `Context at ${Math.round((used / max) * 100)}%: compacting the conversation…`));
     await this.compact({ signal });
   }
 
@@ -316,12 +317,12 @@ export class Agent {
     const kept = this.messages.slice(cut);
     this.messages.length = 0;
     this.messages.push(
-      { role: 'user', content: `[Resumen de la conversación anterior]\n${summary}` },
-      { role: 'assistant', content: 'Entendido. Tengo el contexto y continúo desde ahí.' },
+      { role: 'user', content: `[Summary of the previous conversation]\n${summary}` },
+      { role: 'assistant', content: 'Understood. I have the context and will continue from there.' },
       ...kept,
     );
     if (cut === head.length && !kept.length && head.at(-1)?.role !== 'assistant') {
-      this.messages.push({ role: 'user', content: 'Continúa con la tarea pendiente.' });
+      this.messages.push({ role: 'user', content: 'Continue with the pending task.' });
     }
     return summary;
   }

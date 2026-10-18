@@ -2,6 +2,7 @@
 import { c, style } from './theme.js';
 import { diffLines, printDiff, printTodos, MarkdownStream, getHeaderMark, setHeaderMark, println, ensureNewline, isScreenReader } from './output.js';
 import { select } from './select.js';
+import { L } from '../i18n.js';
 
 export function createUI({ input = null, spinner = null } = {}) {
   const interactive = Boolean(input);
@@ -13,16 +14,16 @@ export function createUI({ input = null, spinner = null } = {}) {
     const mark = getHeaderMark();
     const pre = [];
     const who = agentLabel ? c.agent(` · ${agentLabel}`) : '';
-    pre.push(`${c.warning('⚠ Permiso requerido · ', { bold: true })}${style(tool.name, { bold: true, fg: 'text/primary' })}${who}`);
-    let question = `¿Permitir que Códice use ${tool.name}?`;
+    pre.push(`${c.warning(L('⚠ Permiso requerido · ', '⚠ Permission required · '), { bold: true })}${style(tool.name, { bold: true, fg: 'text/primary' })}${who}`);
+    let question = L(`¿Permitir que Códice use ${tool.name}?`, `Allow Códice to use ${tool.name}?`);
     if (preview?.kind === 'command') {
       pre.push(`  ${c.dim('$')} ${style(String(preview.command), { bold: true, fg: 'text/primary' })}`);
       if (preview.description) pre.push(`  ${c.dim(preview.description, { italic: true })}`);
-      question = '¿Permitir que Códice ejecute este comando?';
+      question = L('¿Permitir que Códice ejecute este comando?', 'Allow Códice to run this command?');
     } else if (preview?.kind === 'diff') {
-      pre.push(`  ${c.info(preview.file)}${preview.created ? c.dim(' (archivo nuevo)') : ''}`);
+      pre.push(`  ${c.info(preview.file)}${preview.created ? c.dim(L(' (archivo nuevo)', ' (new file)')) : ''}`);
       pre.push(...diffLines(preview.old, preview.new, { startLine: preview.startLine || 1, maxLines: 16, indent: '  ' }));
-      question = preview.created ? '¿Crear este archivo?' : '¿Aplicar este cambio?';
+      question = preview.created ? L('¿Crear este archivo?', 'Create this file?') : L('¿Aplicar este cambio?', 'Apply this change?');
     } else {
       const json = JSON.stringify(args);
       pre.push(`  ${c.muted(json.length > 300 ? `${json.slice(0, 300)}…` : json)}`);
@@ -32,11 +33,11 @@ export function createUI({ input = null, spinner = null } = {}) {
       pre,
       title: c.primary(question),
       options: [
-        { label: 'Sí', value: 'yes' },
-        { label: 'Sí, y no volver a preguntar por', value: 'always', hint: rule, hintColor: 'status/info' },
-        { label: 'No, y decirle qué hacer diferente', value: 'no', hint: '(esc)', hintColor: 'status/info' },
+        { label: L('Sí', 'Yes'), value: 'yes' },
+        { label: L('Sí, y no volver a preguntar por', "Yes, and don't ask again for"), value: 'always', hint: rule, hintColor: 'status/info' },
+        { label: L('No, y decirle qué hacer diferente', 'No, and tell it what to do instead'), value: 'no', hint: '(esc)', hintColor: 'status/info' },
       ],
-      footer: '↑↓ elegir · enter confirmar · 1-3 directo · esc = no',
+      footer: L('↑↓ elegir · enter confirmar · esc = no', '↑↓ move · enter select · esc = no'),
       erase: true,
     });
     if (choice === 'yes' || choice === 'always') {
@@ -44,7 +45,7 @@ export function createUI({ input = null, spinner = null } = {}) {
       return { choice };
     }
     ensureNewline();
-    const feedback = await input.question(`${c.accent('›', { bold: true })} ${c.muted('¿Qué debería hacer en su lugar? (enter para omitir) ')}`);
+    const feedback = await input.question(`${c.accent('›', { bold: true })} ${c.muted(L('¿Qué debería hacer en su lugar? (enter para omitir) ', 'What should it do instead? (enter to skip) '))}`);
     return { choice: 'no', feedback: (feedback || '').trim() };
   }
 

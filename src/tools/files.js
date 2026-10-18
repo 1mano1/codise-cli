@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { resolvePath, relPath, isBinaryBuffer } from '../util/fs.js';
 import { diffStats } from '../ui/output.js';
+import { L } from '../i18n.js';
 
 const MAX_LINE = 2000;
 
@@ -23,11 +24,11 @@ export const Read = {
   permissionKey: (a, ctx) => resolvePath(a.file_path, ctx.cwd),
   async run(a, ctx) {
     const p = resolvePath(a.file_path, ctx.cwd);
-    if (!fs.existsSync(p)) throw new Error(`No existe el archivo: ${p}`);
+    if (!fs.existsSync(p)) throw new Error(L(`No existe el archivo: ${p}`, `File not found: ${p}`));
     const st = fs.statSync(p);
-    if (st.isDirectory()) throw new Error(`${p} es una carpeta; usa LS o Glob`);
+    if (st.isDirectory()) throw new Error(L(`${p} es una carpeta; usa LS o Glob`, `${p} is a directory; use LS or Glob`));
     const buf = fs.readFileSync(p);
-    if (isBinaryBuffer(buf)) return { content: `[Archivo binario de ${st.size} bytes]`, display: 'Archivo binario' };
+    if (isBinaryBuffer(buf)) return { content: `[Binary file, ${st.size} bytes]`, display: L('Archivo binario', 'Binary file') };
     const lines = buf.toString('utf8').replace(/^﻿/, '').split(/\r?\n/);
     const start = Math.max(1, Number(a.offset) || 1);
     const limit = Math.max(1, Number(a.limit) || 2000);
@@ -35,9 +36,9 @@ export const Read = {
     ctx.runtime.readFiles.add(p);
     let content = slice.map((l, i) => `${String(start + i).padStart(6)}\t${l.length > MAX_LINE ? `${l.slice(0, MAX_LINE)}…` : l}`).join('\n');
     const rest = lines.length - (start - 1 + slice.length);
-    if (rest > 0) content += `\n… (${rest} líneas más; usa offset=${start + slice.length} para continuar)`;
-    if (!slice.length) content = '(archivo vacío o fuera de rango)';
-    return { content, display: `Leídas ${slice.length} líneas` };
+    if (rest > 0) content += `\n… (${rest} more lines; use offset=${start + slice.length} to continue)`;
+    if (!slice.length) content = '(empty file or out of range)';
+    return { content, display: L(`Leídas ${slice.length} líneas`, `Read ${slice.length} lines`) };
   },
 };
 
@@ -63,7 +64,7 @@ export const Write = {
   async run(a, ctx) {
     const p = resolvePath(a.file_path, ctx.cwd);
     const exists = fs.existsSync(p);
-    if (exists && fs.statSync(p).isDirectory()) throw new Error(`${p} es una carpeta`);
+    if (exists && fs.statSync(p).isDirectory()) throw new Error(L(`${p} es una carpeta`, `${p} is a directory`));
     const old = exists ? fs.readFileSync(p, 'utf8') : '';
     ctx.runtime.checkpoints?.snapshot(p);
     let content = String(a.content ?? '');
@@ -74,11 +75,11 @@ export const Write = {
     const lines = content.split('\n').length;
     if (!exists) {
       ctx.ui?.diff('', content.replace(/\r\n/g, '\n'), 1, { maxLines: 12 });
-      return { content: `Archivo creado: ${p} (${lines} líneas)`, display: `Creado · ${lines} líneas` };
+      return { content: `File created: ${p} (${lines} lines)`, display: L(`Creado · ${lines} líneas`, `Created · ${lines} lines`) };
     }
     const st = diffStats(old.replace(/\r\n/g, '\n'), content.replace(/\r\n/g, '\n'));
     ctx.ui?.diff(old.replace(/\r\n/g, '\n'), content.replace(/\r\n/g, '\n'), 1);
-    return { content: `Archivo sobrescrito: ${p} (${lines} líneas)`, display: `Reescrito · +${st.added} −${st.removed}` };
+    return { content: `File overwritten: ${p} (${lines} lines)`, display: L(`Reescrito · +${st.added} −${st.removed}`, `Rewritten · +${st.added} −${st.removed}`) };
   },
 };
 
@@ -121,17 +122,17 @@ export const Edit = {
   permissionKey: (a, ctx) => resolvePath(a.file_path, ctx.cwd),
   prepare(a, ctx) {
     const p = resolvePath(a.file_path, ctx.cwd);
-    if (!fs.existsSync(p)) throw new Error(`No existe el archivo: ${p}. Usa Write para crearlo.`);
+    if (!fs.existsSync(p)) throw new Error(L(`No existe el archivo: ${p}. Usa Write para crearlo.`, `File not found: ${p}. Use Write to create it.`));
     const raw = fs.readFileSync(p, 'utf8');
     const crlf = raw.includes('\r\n');
     const content = raw.replace(/\r\n/g, '\n');
     const oldStr = String(a.old_string ?? '').replace(/\r\n/g, '\n');
     const newStr = String(a.new_string ?? '').replace(/\r\n/g, '\n');
-    if (!oldStr) throw new Error('old_string está vacío. Para crear un archivo usa Write.');
-    if (oldStr === newStr) throw new Error('old_string y new_string son iguales; no hay nada que cambiar.');
+    if (!oldStr) throw new Error(L('old_string está vacío. Para crear un archivo usa Write.', 'old_string is empty. Use Write to create a file.'));
+    if (oldStr === newStr) throw new Error(L('old_string y new_string son iguales; no hay nada que cambiar.', 'old_string and new_string are identical; nothing to change.'));
     const loc = locate(content, oldStr);
-    if (!loc) throw new Error('No encontré old_string en el archivo. Vuelve a leerlo con Read y copia el texto exacto, con su indentación.');
-    if (loc.count > 1 && !a.replace_all) throw new Error(`old_string aparece ${loc.count} veces. Añade más contexto para que sea único o usa replace_all: true.`);
+    if (!loc) throw new Error(L('No encontré old_string en el archivo. Vuelve a leerlo con Read y copia el texto exacto, con su indentación.', 'old_string was not found. Read the file again and copy the exact text, including indentation.'));
+    if (loc.count > 1 && !a.replace_all) throw new Error(L(`old_string aparece ${loc.count} veces. Añade más contexto para que sea único o usa replace_all: true.`, `old_string appears ${loc.count} times. Add more context to make it unique or use replace_all: true.`));
     let updated;
     if (a.replace_all && loc.exact) updated = content.split(oldStr).join(newStr);
     else updated = content.slice(0, loc.index) + newStr + content.slice(loc.index + loc.length);
@@ -144,14 +145,14 @@ export const Edit = {
   },
   async run(a, ctx) {
     const r = this.prepare(a, ctx);
-    if (!ctx.runtime.readFiles.has(r.p)) throw new Error('Lee el archivo con Read antes de editarlo.');
+    if (!ctx.runtime.readFiles.has(r.p)) throw new Error(L('Lee el archivo con Read antes de editarlo.', 'Read the file with Read before editing it.'));
     ctx.runtime.checkpoints?.snapshot(r.p);
     fs.writeFileSync(r.p, r.crlf ? r.updated.replace(/\n/g, '\r\n') : r.updated);
     const st = diffStats(r.content, r.updated);
     ctx.ui?.diff(r.content, r.updated, 1);
     return {
-      content: `Archivo editado: ${r.p} (${r.count} reemplazo${r.count > 1 ? 's' : ''}, desde la línea ${r.startLine})`,
-      display: `${r.count} cambio${r.count > 1 ? 's' : ''} · +${st.added} −${st.removed}`,
+      content: `File edited: ${r.p} (${r.count} replacement${r.count > 1 ? 's' : ''}, from line ${r.startLine})`,
+      display: L(`${r.count} cambio${r.count > 1 ? 's' : ''} · +${st.added} −${st.removed}`, `${r.count} change${r.count > 1 ? 's' : ''} · +${st.added} −${st.removed}`),
     };
   },
 };
@@ -171,7 +172,7 @@ export const LS = {
     const entries = fs.readdirSync(p, { withFileTypes: true })
       .sort((x, y) => (y.isDirectory() - x.isDirectory()) || x.name.localeCompare(y.name));
     const lines = entries.slice(0, 500).map((e) => (e.isDirectory() ? `${e.name}/` : e.name));
-    if (entries.length > 500) lines.push(`… (${entries.length - 500} más)`);
-    return { content: lines.join('\n') || '(carpeta vacía)', display: `${entries.length} elementos` };
+    if (entries.length > 500) lines.push(`… (${entries.length - 500} more)`);
+    return { content: lines.join('\n') || '(empty directory)', display: L(`${entries.length} elementos`, `${entries.length} items`) };
   },
 };

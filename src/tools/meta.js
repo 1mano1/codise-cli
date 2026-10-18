@@ -1,4 +1,5 @@
 // Herramientas de control: TodoWrite, Task (subagentes), Skill, AskUser, ExitPlanMode.
+import { L } from '../i18n.js';
 
 export const TodoWrite = {
   name: 'TodoWrite',
@@ -21,13 +22,13 @@ export const TodoWrite = {
     },
     required: ['todos'],
   },
-  summary: (a) => `${(a.todos || []).length} tareas`,
+  summary: (a) => L(`${(a.todos || []).length} tareas`, `${(a.todos || []).length} tasks`),
   async run(a, ctx) {
     const todos = (a.todos || []).map((t) => ({ content: String(t.content), status: ['pending', 'in_progress', 'completed'].includes(t.status) ? t.status : 'pending' }));
     ctx.runtime.todos = todos;
     ctx.ui?.todos(todos);
     const done = todos.filter((t) => t.status === 'completed').length;
-    return { content: `Lista actualizada (${done}/${todos.length} completadas).`, display: `Plan actualizado · ${done}/${todos.length}` };
+    return { content: `Task list updated (${done}/${todos.length} completed).`, display: L(`Plan actualizado · ${done}/${todos.length}`, `Plan updated · ${done}/${todos.length}`) };
   },
 };
 
@@ -56,7 +57,7 @@ export const Task = {
       depth: (ctx.depth || 0) + 1,
       description: a.description,
     });
-    return { content: r.text || '(el subagente no devolvió texto)', display: `Subagente terminó · ${r.turns} pasos${r.tokens ? ` · ${r.tokens} tokens` : ''}` };
+    return { content: r.text || '(the subagent returned no text)', display: L(`Subagente terminó · ${r.turns} pasos${r.tokens ? ` · ${r.tokens} tokens` : ''}`, `Subagent finished · ${r.turns} steps${r.tokens ? ` · ${r.tokens} tokens` : ''}`) };
   },
 };
 
@@ -79,11 +80,11 @@ export const Skill = {
   summary: (a) => a.name,
   async run(a, ctx) {
     const s = ctx.runtime.skills[a.name] || Object.values(ctx.runtime.skills).find((x) => x.name.toLowerCase() === String(a.name).toLowerCase());
-    if (!s) throw new Error(`No existe la skill "${a.name}". Disponibles: ${Object.keys(ctx.runtime.skills).join(', ') || 'ninguna'}`);
+    if (!s) throw new Error(`Skill "${a.name}" does not exist. Available: ${Object.keys(ctx.runtime.skills).join(', ') || 'none'}`);
     const body = s.load();
     return {
-      content: `Skill "${s.name}" cargada. Directorio base: ${s.dir}\n${a.args ? `Argumentos: ${a.args}\n` : ''}\n${body}`,
-      display: `Skill cargada · ${s.source}`,
+      content: `Skill "${s.name}" loaded. Base directory: ${s.dir}\n${a.args ? `Arguments: ${a.args}\n` : ''}\n${body}`,
+      display: L(`Skill cargada · ${s.source}`, `Skill loaded · ${s.source}`),
     };
   },
 };
@@ -102,13 +103,13 @@ export const AskUser = {
   },
   summary: (a) => `"${String(a.question).slice(0, 80)}"`,
   async run(a, ctx) {
-    if (!ctx.ui?.interactive) return { content: 'El usuario no está disponible (modo no interactivo). Decide tú con el criterio más razonable y explícalo.', display: 'Sin usuario' };
+    if (!ctx.ui?.interactive) return { content: 'The user is not available (non-interactive mode). Decide with your best judgment and explain it.', display: L('Sin usuario', 'No user') };
     const options = (a.options || []).slice(0, 6).map((o) => ({ label: String(o), value: String(o) }));
-    options.push({ label: 'Otra respuesta…', value: '__other__' });
+    options.push({ label: L('Otra respuesta…', 'Other answer…'), value: '__other__' });
     let answer = await ctx.ui.select({ title: a.question, options });
-    if (answer === '__other__') answer = await ctx.ui.question('Tu respuesta: ');
-    if (answer == null || answer === '') return { content: 'El usuario no respondió.', display: 'Sin respuesta' };
-    return { content: `Respuesta del usuario: ${answer}`, display: answer };
+    if (answer === '__other__') answer = await ctx.ui.question(L('Tu respuesta: ', 'Your answer: '));
+    if (answer == null || answer === '') return { content: 'The user did not answer.', display: L('Sin respuesta', 'No answer') };
+    return { content: `User answer: ${answer}`, display: answer };
   },
 };
 
@@ -122,23 +123,23 @@ export const ExitPlanMode = {
     properties: { plan: { type: 'string', description: 'The plan in Markdown, concise' } },
     required: ['plan'],
   },
-  summary: () => 'plan listo',
+  summary: () => L('plan listo', 'plan ready'),
   async run(a, ctx) {
     ctx.ui?.markdown(a.plan);
-    if (!ctx.ui?.interactive) return { content: 'Modo no interactivo: el plan queda presentado, sin aprobación.', display: 'Plan presentado' };
+    if (!ctx.ui?.interactive) return { content: 'Non-interactive mode: the plan is presented without approval.', display: L('Plan presentado', 'Plan presented') };
     const choice = await ctx.ui.select({
-      title: '¿Apruebas el plan?',
+      title: L('¿Apruebas el plan?', 'Do you approve the plan?'),
       options: [
-        { label: 'Sí, y aceptar ediciones automáticamente', value: 'acceptEdits' },
-        { label: 'Sí, pidiendo permiso para cada cambio', value: 'default' },
-        { label: 'No, sigue planificando', value: 'no' },
+        { label: L('Sí, y aceptar ediciones automáticamente', 'Yes, and auto-accept edits'), value: 'acceptEdits' },
+        { label: L('Sí, pidiendo permiso para cada cambio', 'Yes, asking before each change'), value: 'default' },
+        { label: L('No, sigue planificando', 'No, keep planning'), value: 'no' },
       ],
     });
     if (choice === 'acceptEdits' || choice === 'default') {
       ctx.runtime.setPermissionMode(choice);
-      return { content: `El usuario aprobó el plan. Modo de permisos: ${choice}. Empieza a implementarlo.`, display: 'Plan aprobado' };
+      return { content: `The user approved the plan. Permission mode: ${choice}. Start implementing it.`, display: L('Plan aprobado', 'Plan approved') };
     }
-    const fb = await ctx.ui.question('¿Qué cambiarías del plan? ');
-    return { content: `El usuario NO aprobó el plan. Sigue en modo plan.${fb ? ` Comentarios: ${fb}` : ''}`, display: 'Plan rechazado' };
+    const fb = await ctx.ui.question(L('¿Qué cambiarías del plan? ', 'What would you change in the plan? '));
+    return { content: `The user did NOT approve the plan. Stay in plan mode.${fb ? ` Feedback: ${fb}` : ''}`, display: L('Plan rechazado', 'Plan rejected') };
   },
 };

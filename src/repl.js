@@ -15,6 +15,8 @@ import { Session } from './session.js';
 import { runShell } from './tools/bash.js';
 import { resolvePath, relPath, truncateMiddle, isBinaryBuffer, formatDuration } from './util/fs.js';
 import { LLMError } from './llm/index.js';
+import { L } from './i18n.js';
+import { runOnboarding } from './onboarding.js';
 
 // Adjunta archivos mencionados con @ruta.
 export function expandMentions(text, cwd) {
@@ -43,13 +45,20 @@ export function expandMentions(text, cwd) {
 
 export function describeError(e, runtime) {
   const provider = runtime.settings.provider;
+  const p = runtime.providerInfo?.();
+  const name = p?.label || provider;
   if (e instanceof LLMError) {
-    if (e.network) return [`No se pudo conectar con ${provider}`, e.message.replace(/^No se pudo conectar con [^(]+/, '').replace(/[()]/g, '').trim(), provider === 'ollama' ? '¿Está en marcha? Ejecuta "ollama serve" o cambia de proveedor con /provider' : 'Revisa que el servidor esté encendido y la URL sea correcta (/provider), o usa /doctor'];
-    if (e.status === 401 || e.status === 403) return ['El proveedor rechazó la API key', `HTTP ${e.status}`, 'Revisa la variable de entorno de la API key o el token de tu PC remota'];
-    if (e.status === 404) return [`El modelo "${runtime.settings.model}" no está disponible`, `HTTP 404 en ${provider}`, provider === 'ollama' ? `Descárgalo con "ollama pull ${runtime.settings.model}" o elige otro con /models` : 'Elige otro modelo con /models'];
-    if (e.status === 400 && /context|token/i.test(e.body)) return ['La conversación excede el contexto del modelo', `HTTP 400`, 'Usa /compact o aumenta contextWindow con /config set contextWindow 32768'];
+    if (e.network) {
+      if (p?.type === 'ollama') return [L('No encuentro Ollama en esta PC', 'Ollama is not running on this computer'), e.message, L('Instálalo desde ollama.com (o ábrelo si ya lo tienes) y descarga un modelo con “ollama pull qwen2.5-coder:3b”. También puedes elegir otra forma de conectarte con /setup.', 'Install it from ollama.com (or open it if you have it) and download a model with “ollama pull qwen2.5-coder:3b”. You can also choose another way to connect with /setup.')];
+      if (p?.type === 'codice') return [L(`No pude conectar con tu PC remota (${name})`, `Could not reach your remote PC (${name})`), e.message, L('Revisa que “codice serve” siga abierto en esa PC y que estén en la misma red (o en Tailscale). Usa /setup para cambiar de conexión.', 'Check that “codice serve” is still running on that PC and that you are on the same network (or Tailscale). Use /setup to switch connection.')];
+      return [L(`No pude conectar con ${name}`, `Could not connect to ${name}`), e.message, L('Revisa que el servidor esté encendido o elige otra conexión con /setup.', 'Check that the server is running or choose another connection with /setup.')];
+    }
+    if (e.status === 401 || e.status === 403) return [L(`${name} rechazó la API key`, `${name} rejected the API key`), `HTTP ${e.status}`, L('Vuelve a configurarla con /setup.', 'Set it up again with /setup.')];
+    if (e.status === 404) return [L(`El modelo “${runtime.settings.model}” no está disponible`, `Model “${runtime.settings.model}” is not available`), `HTTP 404`, p?.type === 'ollama' ? L(`Descárgalo con “ollama pull ${runtime.settings.model}” o elige otro con /models.`, `Download it with “ollama pull ${runtime.settings.model}” or pick another with /models.`) : L('Elige otro modelo con /models.', 'Pick another model with /models.')];
+    if (e.status === 429) return [L(`${name} limitó las peticiones`, `${name} is rate limiting requests`), `HTTP 429`, L('Espera un momento y vuelve a intentarlo, o cambia de modelo con /models.', 'Wait a moment and try again, or switch models with /models.')];
+    if (e.status === 400 && /context|token/i.test(e.body)) return [L('La conversación no cabe en el contexto del modelo', 'The conversation does not fit the model context'), 'HTTP 400', L('Usa /compact para resumirla o aumenta contextWindow en /config.', 'Use /compact to summarize it or raise contextWindow in /config.')];
   }
-  return ['Ocurrió un error', e.message, null];
+  return [L('Ocurrió un error', 'Something went wrong'), e.message, null];
 }
 
 // Elige un modelo si no hay ninguno configurado.
@@ -64,17 +73,17 @@ export async function ensureModel(runtime, { input = null } = {}) {
     return false;
   }
   if (!models.length) {
-    ui.warn(runtime.settings.provider === 'ollama' ? 'Ollama no tiene modelos. Descarga uno, por ejemplo: ollama pull qwen2.5-coder:7b' : 'El proveedor no tiene modelos disponibles.');
+    ui.warn(runtime.settings.provider === 'ollama' ? L('Ollama no tiene modelos. Descarga uno: ollama pull qwen2.5-coder:3b', 'Ollama has no models. Download one: ollama pull qwen2.5-coder:3b') : L('El proveedor no tiene modelos disponibles.', 'The provider has no models available.'));
     return false;
   }
   let pick = models[0].id;
   const coder = models.find((m) => /coder|code/i.test(m.id));
   if (models.length > 1 && input) {
-    pick = await select(input, { title: 'Elige un modelo para empezar', options: models.map((m) => ({ label: m.id, value: m.id, hint: m.size ? `${(m.size / 1e9).toFixed(1)} GB` : '' })), initial: coder ? models.indexOf(coder) : 0 });
+    pick = await select(input, { title: L('Elige un modelo para empezar', 'Choose a model to start'), options: models.map((m) => ({ label: m.id, value: m.id, hint: m.size ? `${(m.size / 1e9).toFixed(1)} GB` : '' })), initial: coder ? models.indexOf(coder) : 0 });
     if (!pick) return false;
   } else if (coder) pick = coder.id;
   runtime.save('model', pick);
-  ui.success(`Modelo: ${pick}`);
+  ui.success(L(`Modelo: ${pick}`, `Model: ${pick}`));
   return true;
 }
 
@@ -94,8 +103,8 @@ class Repl {
   commandList() {
     const rt = this.runtime;
     const out = [];
-    for (const [name, cmd] of Object.entries(BUILTIN_COMMANDS)) out.push({ name: `/${name}`, description: cmd.description, source: 'integrado' });
-    for (const cmd of Object.values(rt.commands)) out.push({ name: `/${cmd.name}`, description: cmd.description, source: cmd.source.startsWith('plugin') ? cmd.source : 'personalizado' });
+    for (const [name, cmd] of Object.entries(BUILTIN_COMMANDS)) out.push({ name: `/${name}`, description: typeof cmd.description === 'function' ? cmd.description() : cmd.description, source: 'integrado', label: L('integrado', 'built-in') });
+    for (const cmd of Object.values(rt.commands)) out.push({ name: `/${cmd.name}`, description: cmd.description, source: cmd.source.startsWith('plugin') ? cmd.source : L('personalizado', 'custom') });
     for (const s of Object.values(rt.skills)) out.push({ name: `/${s.name}`, description: s.description, source: 'skill' });
     for (const p of rt.mcp.prompts()) out.push({ name: `/${p.name}`, description: p.description, source: 'MCP' });
     return out;
@@ -107,27 +116,19 @@ class Repl {
 
   async welcome() {
     const rt = this.runtime;
-    const p = rt.providerInfo();
-    const res = [
-      `${Object.keys(rt.skills).length} skills`,
-      `${Object.keys(rt.agents).length} agentes`,
-      `${rt.mcp.status().filter((s) => s.status === 'conectado').length} MCP`,
-      `${rt.plugins.length} plugins`,
-    ];
+    if (!rt.settings.onboarded && this.input.tty) await runOnboarding(rt, this.input);
     ui.banner({
       version: VERSION,
       model: rt.settings.model,
-      provider: rt.settings.provider,
-      providerUrl: p?.baseUrl?.replace(/^https?:\/\//, ''),
+      provider: rt.providerInfo()?.label || rt.settings.provider,
       cwd: rt.cwd,
       memory: rt.memory.map((m) => m.name),
-      resources: c.agent(res[0]) + c.dim(' · ') + c.agent(res[1]) + c.dim(' · ') + c.info(`${res[2]} ◆`) + c.dim(' · ') + c.info(res[3]),
       mascot: rt.mascot(),
     });
-    for (const s of rt.mcp.status().filter((x) => x.status !== 'conectado')) ui.warn(`MCP ${s.name} no conectó: ${s.error}`);
-    for (const w of rt.themeWarnings || []) ui.warn(`Tema con poco contraste: ${w}`);
-    if (this.session.messages.length) ui.hint(`Conversación retomada (${this.session.messages.length} mensajes).`);
-    await ensureModel(rt, { input: this.input });
+    const failed = rt.mcp.status().filter((x) => x.status !== 'conectado');
+    if (failed.length) ui.warn(L(`${failed.length} servidor(es) MCP no conectaron. Revisa /mcp.`, `${failed.length} MCP server(s) failed to connect. See /mcp.`));
+    if (rt.themeWarnings?.length) ui.warn(L('Tu tema tiene colores con poco contraste. Revisa /accessibility.', 'Your theme has low-contrast colors. See /accessibility.'));
+    if (this.session.messages.length) ui.hint(L(`Conversación retomada (${this.session.messages.length} mensajes).`, `Conversation resumed (${this.session.messages.length} messages).`));
   }
 
   async readInput() {
@@ -162,7 +163,7 @@ class Repl {
     if (text.startsWith('#') && !text.startsWith('##')) {
       const f = addMemory(this.runtime.projectRoot, text.slice(1));
       this.runtime.reload();
-      return ui.success(`Guardado en memoria (${relPath(f, this.runtime.cwd)})`);
+      return ui.success(L(`Guardado en memoria (${relPath(f, this.runtime.cwd)})`, `Saved to memory (${relPath(f, this.runtime.cwd)})`));
     }
     return this.runPrompt(text);
   }
@@ -192,7 +193,7 @@ class Repl {
       const content = await mcpPrompt.client.getPrompt(mcpPrompt.prompt.name, values);
       return this.runPrompt(content, { display: text });
     }
-    ui.warn(`Comando desconocido: /${rawName}. Escribe /help para ver la lista.`);
+    ui.warn(L(`Comando desconocido: /${rawName}. Escribe /help para ver la lista.`, `Unknown command: /${rawName}. Type /help to see the list.`));
   }
 
   async shell(cmd) {
@@ -201,19 +202,22 @@ class Repl {
     const outText = r.output.replace(/\r\n/g, '\n').trimEnd();
     const lines = outText.split('\n');
     for (const l of lines.slice(0, 40)) ui.println(c.muted(l));
-    if (lines.length > 40) ui.hint(`… ${lines.length - 40} líneas más (se añadieron completas al contexto)`);
-    if (r.code !== 0) ui.println(c.error(`código de salida ${r.code}`));
+    if (lines.length > 40) ui.hint(L(`… ${lines.length - 40} líneas más (se añadieron completas al contexto)`, `… ${lines.length - 40} more lines (added in full to the context)`));
+    if (r.code !== 0) ui.println(c.error(L(`código de salida ${r.code}`, `exit code ${r.code}`)));
     this.pendingContext += `\n<bash-input>${cmd}</bash-input>\n<bash-output>\n${truncateMiddle(outText, 20000)}\n</bash-output>`;
   }
 
   async runPrompt(text, { display = null } = {}) {
     const rt = this.runtime;
-    if (!rt.settings.model && !(await ensureModel(rt, { input: this.input }))) return;
+    if (!rt.settings.model) {
+      if (this.input.tty) { ui.hint(L('Primero elige cómo conectarte a un modelo.', 'First choose how to connect to a model.')); await runOnboarding(rt, this.input); }
+      if (!rt.settings.model && !(await ensureModel(rt, { input: this.input }))) return;
+    }
     const { text: withFiles, attached } = expandMentions(text, rt.cwd);
-    if (attached.length) ui.hint(`Adjuntado: ${attached.join(', ')}`);
+    if (attached.length) ui.hint(L(`Adjuntado: ${attached.join(', ')}`, `Attached: ${attached.join(', ')}`));
     if (display) ui.println(c.dim(display));
     const hook = await rt.hook('UserPromptSubmit', { prompt: text });
-    if (hook.blocked) return ui.warn(`Bloqueado por un hook: ${hook.reason}`);
+    if (hook.blocked) return ui.warn(L(`Bloqueado por un hook: ${hook.reason}`, `Blocked by a hook: ${hook.reason}`));
     let content = withFiles;
     if (this.pendingContext) { content = `${this.pendingContext.trim()}\n\n${content}`; this.pendingContext = ''; }
     if (hook.context) content += `\n\n<hook-context>\n${hook.context}\n</hook-context>`;
@@ -225,7 +229,7 @@ class Repl {
       await this.agent.run(content, { signal: this.controller.signal });
     } catch (e) {
       rt.spinner.stop();
-      if (e.name === 'AbortError') ui.hint('Interrumpido. ¿Qué hago ahora?');
+      if (e.name === 'AbortError') ui.hint(L('Interrumpido. ¿Qué hago ahora?', 'Interrupted. What should I do instead?'));
       else this.showError(e);
     } finally {
       rt.spinner.stop();
@@ -248,7 +252,7 @@ class Repl {
     if (!last) return;
     this.runtime.spinner.stop();
     ui.ensureNewline();
-    ui.println(c.dim(`── salida completa de ${last.name} ──`));
+    ui.println(c.dim(L(`── salida completa de ${last.name} ──`, `── full output of ${last.name} ──`)));
     ui.println(c.muted(last.content));
     ui.println(c.dim('──'));
   }
@@ -256,7 +260,7 @@ class Repl {
   ctrlC() {
     if (Date.now() - this.lastCtrlC < 2000) { this.exit(); return; }
     this.lastCtrlC = Date.now();
-    this.statusOverride = 'Pulsa ctrl+c otra vez para salir';
+    this.statusOverride = L('Pulsa ctrl+c otra vez para salir', 'Press ctrl+c again to exit');
     this.input.refreshBelow();
     setTimeout(() => { this.statusOverride = null; if (this.input.state === 'prompt') this.input.refreshBelow(); }, 2000);
   }
@@ -272,11 +276,11 @@ class Repl {
 
   resume(id) {
     const s = Session.load(id);
-    if (!s) return ui.warn('No encontré esa conversación.');
+    if (!s) return ui.warn(L('No encontré esa conversación.', 'Conversation not found.'));
     this.session = s;
     this.runtime.sessionId = s.id;
     this.agent = new Agent(this.runtime, { messages: s.messages });
-    ui.success(`Conversación retomada: ${s.title || s.id} (${s.messages.length} mensajes)`);
+    ui.success(L(`Conversación retomada: ${s.title || s.id} (${s.messages.length} mensajes)`, `Conversation resumed: ${s.title || s.id} (${s.messages.length} messages)`));
   }
 
   showError(e) {
@@ -293,7 +297,7 @@ class Repl {
     this.runtime.mcp.stopAll();
     this.runtime.spinner.stop();
     ui.ensureNewline();
-    ui.println(c.dim(`Hasta luego. Retoma esta conversación con: codice --continue`));
+    ui.println(c.dim(L('Hasta luego. Retoma esta conversación con: codice --continue', 'Bye. Resume this conversation with: codice --continue')));
     this.input.close();
     setTimeout(() => process.exit(0), 50);
   }

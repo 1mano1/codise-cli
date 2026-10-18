@@ -221,3 +221,27 @@ Repo: https://github.com/1mano1/codise-cli
   `test:`, `refactor:`, `chore:`). Nada de explicaciones largas ni tono de tutorial.
 - **Sin rastro de IA**: no agregar `Co-Authored-By` de Claude ni "Generated with Claude Code" en commits ni PR.
 - PR → `dev` con resumen breve y cómo se probó; se fusiona y se borra la rama.
+
+## Estado al 2026-10-18 (rama `feat/onboarding-i18n`)
+
+Hecho en esta rama (pedido del usuario tras probar v0.1.0):
+- **Asistente de inicio** (`src/onboarding.js`, primera vez o `/setup`): 1) idioma es/en → 2) tema con flechas,
+  vista previa y mascota del tema → 3) cómo usar modelos: local (detecta Ollama/LM Studio/llama.cpp/vLLM/Jan),
+  API key (Gemini, Groq, OpenRouter, OpenAI, Anthropic, DeepSeek; entrada oculta), PC remota (`codice serve`) o después.
+- **Idioma de la interfaz** (`src/i18n.js`, `L(es, en)`, ajuste `language`). Los comandos son iguales en ambos
+  idiomas y en inglés (`/help`, `/model`, `/theme`…).
+- **Pantalla de inicio mínima** (no abrumar): banner + mascota, una línea de estado y una de ayuda.
+- **Errores claros en dos líneas** (qué pasó + qué hacer), con ajuste de línea en vez de cortar texto.
+- `/theme` muestra la mascota de cada tema; `/mascot` elige mascota **solo para el tema actual o para todos**
+  (`themeMascots`).
+- Tema `auto` por defecto; `--base-url` se muestra con su dirección (no "cli").
+
+Pendiente:
+- Traducir al inglés lo que aún sale solo en español: `src/remote.js` (serve/bench), `src/subcommands.js`,
+  `src/print.js`, ayuda de `src/cli.js`, `src/tools/web.js`, mensajes de `src/mcp.js` y `src/plugins.js`.
+- Probar el asistente y la consola en una terminal real (no se puede automatizar sin TTY).
+- Modelos del usuario: en la laptop no hay Ollama ni LM Studio. Solo hay en la caché de Hugging Face
+  `Qwen2.5-0.5B-Instruct`, `Qwen2.5-3B-Instruct` e `Imanol11/qwen3b-int4-TinyQ` (formato transformers, requieren
+  Python; no se pueden usar directamente). Opciones: instalar Ollama + `ollama pull qwen2.5-coder:3b`, o una API key
+  con nivel gratuito (Gemini, Groq, OpenRouter `:free`).
+- Las suscripciones de chat (Claude Pro/Max, ChatGPT Plus) no se pueden usar en apps de terceros: solo API keys.

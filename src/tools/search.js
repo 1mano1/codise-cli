@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { resolvePath, relPath, walk, isBinaryBuffer, toPosix } from '../util/fs.js';
 import { globToRegex, makeMatcher } from '../util/glob.js';
+import { L } from '../i18n.js';
 
 export const Glob = {
   name: 'Glob',
@@ -33,9 +34,9 @@ export const Glob = {
     }
     matches.sort((x, y) => y.mtime - x.mtime);
     const shown = matches.slice(0, 200).map((m) => relPath(path.join(base, m.rel), ctx.cwd));
-    let content = shown.join('\n') || 'Sin coincidencias';
-    if (matches.length > 200) content += `\n… (${matches.length - 200} más; afina el patrón)`;
-    return { content, display: `${matches.length} archivo${matches.length === 1 ? '' : 's'}` };
+    let content = shown.join('\n') || 'No matches';
+    if (matches.length > 200) content += `\n… (${matches.length - 200} more; refine the pattern)`;
+    return { content, display: L(`${matches.length} archivo${matches.length === 1 ? '' : 's'}`, `${matches.length} file${matches.length === 1 ? '' : 's'}`) };
   },
 };
 
@@ -63,7 +64,7 @@ export const Grep = {
     try {
       re = new RegExp(a.pattern, a.ignore_case ? 'i' : '');
     } catch (e) {
-      throw new Error(`Expresión regular inválida: ${e.message}`);
+      throw new Error(L(`Expresión regular inválida: ${e.message}`, `Invalid regular expression: ${e.message}`));
     }
     const target = resolvePath(a.path || '.', ctx.cwd);
     const mode = a.output_mode || 'files_with_matches';
@@ -102,8 +103,8 @@ export const Grep = {
         }
       }
     }
-    const content = results.join('\n') || 'Sin coincidencias';
-    const display = mode === 'files_with_matches' ? `${results.length} archivo${results.length === 1 ? '' : 's'}` : `${total} coincidencia${total === 1 ? '' : 's'}`;
-    return { content: results.length >= limit ? `${content}\n… (límite de ${limit} resultados)` : content, display };
+    const content = results.join('\n') || 'No matches';
+    const display = mode === 'files_with_matches' ? L(`${results.length} archivo${results.length === 1 ? '' : 's'}`, `${results.length} file${results.length === 1 ? '' : 's'}`) : L(`${total} coincidencia${total === 1 ? '' : 's'}`, `${total} match${total === 1 ? '' : 'es'}`);
+    return { content: results.length >= limit ? `${content}\n… (limit of ${limit} results)` : content, display };
   },
 };

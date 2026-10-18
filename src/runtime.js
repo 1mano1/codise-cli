@@ -16,6 +16,7 @@ import { createClient, parseTarget } from './llm/index.js';
 import { BUILTIN_TOOLS } from './tools/index.js';
 import { Checkpoints } from './session.js';
 import { formatTokens } from './util/fs.js';
+import { setLanguage, L } from './i18n.js';
 
 export class Runtime {
   constructor({ cwd = process.cwd(), overrides = {} } = {}) {
@@ -44,7 +45,7 @@ export class Runtime {
     const o = this.overrides;
     if (o.provider) s.provider = o.provider;
     if (o.model) s.model = o.model;
-    if (o.baseUrl) { s.providers = { ...s.providers, cli: { type: o.providerType || 'openai', baseUrl: o.baseUrl, apiKey: o.apiKey } }; s.provider = 'cli'; }
+    if (o.baseUrl) { s.providers = { ...s.providers, cli: { type: o.providerType || 'openai', baseUrl: o.baseUrl, apiKey: o.apiKey, label: o.baseUrl.replace(/^https?:\/\//, '').replace(/\/v1\/?$/, '') } }; s.provider = 'cli'; }
     if (o.toolMode) s.toolMode = o.toolMode;
     if (o.offline) s.offline = true;
     if (o.screenReader) s.accessibility = { ...s.accessibility, screenReader: true };
@@ -52,6 +53,7 @@ export class Runtime {
     if (o.noColor) s.accessibility = { ...s.accessibility, noColor: true };
     if (o.theme) s.theme = o.theme;
     this.settings = s;
+    setLanguage(s.language);
     this.localSettings = readJSON(settingsFiles(this.projectRoot).local, {});
     if (process.env.REDUCE_MOTION) s.accessibility.reduceMotion = true;
     setColorLevel(s.accessibility.screenReader || s.accessibility.noColor ? 0 : detectColorLevel());
@@ -99,7 +101,7 @@ export class Runtime {
     return createClient(this.settings, {
       provider: p,
       model: m,
-      onFallback: (next, err) => warn(`${err.message}. Uso el respaldo ${next.provider}:${next.model}.`),
+      onFallback: (next, err) => warn(L(`${err.message}. Uso el respaldo ${next.provider}:${next.model}.`, `${err.message}. Using fallback ${next.provider}:${next.model}.`)),
     });
   }
 
@@ -173,7 +175,7 @@ export class Runtime {
   // ── Subagentes ─────────────────────────────────────────────────
   async runSubagent(type, prompt, { signal, depth = 1, description } = {}) {
     const def = this.agents[type] || Object.values(this.agents).find((a) => a.name.toLowerCase() === String(type).toLowerCase());
-    if (!def) throw new Error(`No existe el agente "${type}". Disponibles: ${Object.keys(this.agents).join(', ')}`);
+    if (!def) throw new Error(L(`No existe el agente "${type}". Disponibles: ${Object.keys(this.agents).join(', ')}`, `Agent "${type}" does not exist. Available: ${Object.keys(this.agents).join(', ')}`));
     const { Agent, subView } = await import('./agent/agent.js');
     const override = this.settings.agentModels?.[def.name];
     let provider = def.provider || null;
@@ -190,13 +192,13 @@ export class Runtime {
   // ── Estado ─────────────────────────────────────────────────────
   modeLabel() {
     const info = MODE_INFO[this.permissionMode];
-    return { text: `${info.label}${this.permissionMode === 'default' ? ' (shift+tab para cambiar)' : ''}`, color: info.color };
+    return { text: `${info.label}${this.permissionMode === 'default' ? L(' (shift+tab para cambiar)', ' (shift+tab to cycle)') : ''}`, color: info.color };
   }
 
   statusLine(agent) {
     const m = this.modeLabel();
     const mode =m.color === 'status/agent' ? c.agent(m.text) : m.color === 'status/warning' ? c.warning(m.text) : m.color === 'status/error' ? c.error(m.text) : c.muted(m.text);
-    const parts = [this.settings.model || 'sin modelo', this.settings.provider];
+    const parts = [this.settings.model || L('sin modelo', 'no model'), this.settings.provider];
     if (agent) {
       try {
         const u = agent.contextUsage();
