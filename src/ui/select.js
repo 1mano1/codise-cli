@@ -1,7 +1,7 @@
 // Menú navegable con flechas, números 1-9, enter y esc. Accesible: en modo lector de pantalla o sin TTY
 // muestra una lista numerada y pide el número.
 import { c, style, visibleWidth } from './theme.js';
-import { isScreenReader, ensureNewline, println, width } from './output.js';
+import { isScreenReader, ensureNewline, println, width, fit } from './output.js';
 import { L } from '../i18n.js';
 
 // options: [{ label, value, hint, hintColor, disabled }]
@@ -35,8 +35,10 @@ export async function select(input, { title, options, initial = 0, footer, extra
     if (extra) for (const l of extra(options[sel], sel) || []) lines.push(l);
     lines.push(c.dim(footer || L('↑↓ elegir · enter confirmar · esc cancelar', '↑↓ move · enter select · esc cancel')));
     if (drawn) out.write(`\x1b[${drawn}A\r\x1b[J`);
-    out.write(`${lines.join('\n')}\n`);
-    drawn = lines.length;
+    // cada línea debe caber en un renglón: si se partiera, el redibujado se descuadra
+    const safe = lines.map((l) => fit(l, Math.max(20, (process.stdout.columns || 80) - 1)));
+    out.write(`${safe.join('\n')}\n`);
+    drawn = safe.length;
   };
 
   return new Promise((resolve) => {

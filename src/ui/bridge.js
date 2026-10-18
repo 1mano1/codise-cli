@@ -1,6 +1,6 @@
 // Puente entre herramientas/agentes y la interfaz: diálogo de permisos, menús, preguntas, diffs diferidos.
 import { c, style } from './theme.js';
-import { diffLines, printDiff, printTodos, MarkdownStream, getHeaderMark, setHeaderMark, println, ensureNewline, isScreenReader } from './output.js';
+import { diffLines, printDiff, printTodos, MarkdownStream, getHeaderMark, setHeaderMark, println, ensureNewline, isScreenReader, wrap, width } from './output.js';
 import { select } from './select.js';
 import { L } from '../i18n.js';
 
@@ -17,7 +17,9 @@ export function createUI({ input = null, spinner = null } = {}) {
     pre.push(`${c.warning(L('⚠ Permiso requerido · ', '⚠ Permission required · '), { bold: true })}${style(tool.name, { bold: true, fg: 'text/primary' })}${who}`);
     let question = L(`¿Permitir que Códice use ${tool.name}?`, `Allow Códice to use ${tool.name}?`);
     if (preview?.kind === 'command') {
-      pre.push(`  ${c.dim('$')} ${style(String(preview.command), { bold: true, fg: 'text/primary' })}`);
+      // comandos largos: se muestran completos en varios renglones (no cortados)
+      const cmdLines = wrap(String(preview.command), Math.max(20, width() - 6));
+      cmdLines.forEach((l, i) => pre.push(`  ${c.dim(i ? ' ' : '$')} ${style(l, { bold: true, fg: 'text/primary' })}`));
       if (preview.description) pre.push(`  ${c.dim(preview.description, { italic: true })}`);
       question = L('¿Permitir que Códice ejecute este comando?', 'Allow Códice to run this command?');
     } else if (preview?.kind === 'diff') {

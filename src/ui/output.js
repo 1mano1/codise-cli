@@ -53,7 +53,8 @@ export function blank() {
   out('\n');
 }
 
-function fit(s, max = width() - 1) {
+// Corta una línea al ancho visible de la terminal (sin romper colores). Evita que se parta en dos renglones.
+export function fit(s, max = width() - 1) {
   // corta texto visible sin romper secuencias ANSI
   if (visibleWidth(s) <= max) return s;
   let w = 0, res = '';
