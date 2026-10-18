@@ -17,6 +17,7 @@ import { BUILTIN_TOOLS } from './tools/index.js';
 import { Checkpoints } from './session.js';
 import { formatTokens } from './util/fs.js';
 import { setLanguage, L } from './i18n.js';
+import { localEngine } from './local/engine.js';
 
 export class Runtime {
   constructor({ cwd = process.cwd(), overrides = {} } = {}) {
@@ -34,6 +35,7 @@ export class Runtime {
     this.lastToolOutput = null;
     this.permissions = new Permissions(this);
     this.mcp = new McpManager({ cwd: this.cwd });
+    localEngine.onStatus = (msg) => { if (this.spinner.active) this.spinner.setVerb(msg); };
     ensureHome();
     this.reload();
     this.permissionMode = this.overrides.permissionMode || this.settings.permissions?.mode || 'default';

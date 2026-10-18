@@ -47,5 +47,7 @@ export async function runPrint(runtime, prompt, { session, outputFormat = 'text'
     return 1;
   } finally {
     runtime.mcp.stopAll();
+    const { localEngine } = await import('./local/engine.js');
+    localEngine.stop();
   }
 }

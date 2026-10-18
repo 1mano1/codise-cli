@@ -13,6 +13,7 @@ export const VERSION = readJSON(path.join(ROOT, 'package.json'), {}).version || 
 
 // Proveedores conocidos. type: "ollama" (API nativa), "openai" (compatible) o "codice" (codice serve remoto).
 export const PRESETS = {
+  local: { type: 'local', baseUrl: 'local', label: 'Modelos locales (GGUF)' },
   ollama: { type: 'ollama', baseUrl: 'http://localhost:11434', label: 'Ollama' },
   lmstudio: { type: 'openai', baseUrl: 'http://localhost:1234/v1', label: 'LM Studio' },
   llamacpp: { type: 'openai', baseUrl: 'http://localhost:8080/v1', label: 'llama.cpp' },
@@ -27,8 +28,10 @@ export const PRESETS = {
 };
 
 export const DEFAULTS = {
-  provider: 'ollama',
+  provider: 'local',
   model: '',
+  modelDirs: [],
+  local: { gpuLayers: 99, serverPath: '', threads: 0 },
   providers: {},
   fallback: [],
   toolMode: 'auto',

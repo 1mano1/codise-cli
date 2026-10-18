@@ -70,7 +70,7 @@ export async function unitTests(t) {
   await t('proveedor:modelo con modelos que contienen ":"', async (assert) => {
     const s = deepMerge(DEFAULTS, { providers: { 'pc-casa': { type: 'codice', baseUrl: 'http://x' } } });
     assert(JSON.stringify(parseTarget('pc-casa:qwen2.5:7b', s)) === '{"provider":"pc-casa","model":"qwen2.5:7b"}', 'con proveedor');
-    assert(JSON.stringify(parseTarget('qwen2.5:7b', s)) === '{"provider":"ollama","model":"qwen2.5:7b"}', 'sin proveedor');
+    assert(JSON.stringify(parseTarget('qwen2.5:7b', s)) === '{"provider":"local","model":"qwen2.5:7b"}', 'sin proveedor');
   });
 
   await t('stream: separa <think> y oculta <tool_call> aunque lleguen partidos', async (assert) => {
@@ -198,6 +198,47 @@ export async function unitTests(t) {
     } finally {
       mgr.stopAll();
     }
+  });
+
+  await t('modelos locales: GGUF, Ollama, divididos y formatos no compatibles', async (assert) => {
+    const M = await import('../src/local/models.js');
+    const dir = tmp();
+    const big = (p, mb = 25) => { fs.mkdirSync(path.dirname(p), { recursive: true }); const fd = fs.openSync(p, 'w'); fs.ftruncateSync(fd, mb * 1024 * 1024); fs.closeSync(fd); };
+    big(path.join(dir, 'qwen-coder-7b-q4_k_m.gguf'));
+    big(path.join(dir, 'sub', 'llama-3-8b.gguf'));
+    big(path.join(dir, 'mmproj-vision.gguf'));
+    big(path.join(dir, 'grande-00001-of-00002.gguf'));
+    big(path.join(dir, 'grande-00002-of-00002.gguf'));
+    big(path.join(dir, 'tiny.gguf'), 1);
+    big(path.join(dir, 'hf-model', 'model.safetensors'), 1);
+    // Ollama: manifiesto → blob
+    const oll = path.join(dir, 'ollama');
+    big(path.join(oll, 'blobs', 'sha256-abc123'));
+    fs.mkdirSync(path.join(oll, 'manifests', 'registry.ollama.ai', 'library', 'qwen2.5-coder'), { recursive: true });
+    fs.writeFileSync(path.join(oll, 'manifests', 'registry.ollama.ai', 'library', 'qwen2.5-coder', '7b'), JSON.stringify({ layers: [{ mediaType: 'application/vnd.ollama.image.model', digest: 'sha256:abc123', size: 26214400 }] }));
+    const prev = process.env.OLLAMA_MODELS;
+    process.env.OLLAMA_MODELS = oll;
+    try {
+      const ids = M.scanModels({ modelDirs: [dir] }).map((m) => m.id).sort();
+      assert(ids.includes('qwen-coder-7b-q4_k_m') && ids.includes('llama-3-8b'), `GGUF: ${ids}`);
+      assert(ids.includes('qwen2.5-coder:7b'), `Ollama: ${ids}`);
+      assert(ids.includes('grande-00001-of-00002') && !ids.includes('grande-00002-of-00002'), 'solo la primera parte de un modelo dividido');
+      assert(!ids.some((i) => /mmproj|tiny/.test(i)), 'sin proyectores de visión ni archivos diminutos');
+      assert(M.resolveModelFile({ modelDirs: [dir] }, 'llama-3-8b')?.file.endsWith('llama-3-8b.gguf'), 'resuelve por id');
+      assert(M.unsupportedModels({ modelDirs: [dir] }).some((u) => u.kind === 'safetensors'), 'detecta safetensors no compatibles');
+    } finally {
+      if (prev === undefined) delete process.env.OLLAMA_MODELS; else process.env.OLLAMA_MODELS = prev;
+    }
+  });
+
+  await t('motor local: paquetes por sistema y nombre de repo de Hugging Face', async (assert) => {
+    const E = await import('../src/local/engine.js');
+    const HF = await import('../src/local/hf.js');
+    const pkgs = E.enginePackages();
+    assert(pkgs.length >= 1 && pkgs.every((p) => p.url.includes(E.LLAMA_VERSION)), 'versión fija');
+    assert(HF.parseRepo('https://huggingface.co/Imanol11/qwen3b-int4-Octuma/tree/main') === 'Imanol11/qwen3b-int4-Octuma', 'URL completa');
+    assert(HF.parseRepo('Qwen/Qwen2.5-Coder-7B-Instruct-GGUF') === 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF', 'usuario/repo');
+    assert(HF.parseRepo('no valido') === null, 'inválido');
   });
 
   await t('plugins: instala el ejemplo y carga sus recursos', async (assert) => {

@@ -3,6 +3,8 @@ import { OpenAIClient, LLMError, safeFetch } from './openai.js';
 import { OllamaClient } from './ollama.js';
 import { resolveProvider, listProviderNames } from '../config.js';
 import { L } from '../i18n.js';
+import { scanModels, resolveModelFile } from '../local/models.js';
+import { localEngine } from '../local/engine.js';
 
 export { LLMError };
 
@@ -61,12 +63,41 @@ export class RemoteClient {
   }
 }
 
+// Modelos GGUF en disco: Códice arranca llama-server con el modelo elegido y le habla por la API OpenAI.
+export class LocalClient {
+  constructor(opts, settings) {
+    this.opts = opts;
+    this.settings = settings;
+    this.model = opts.model;
+    this.kind = 'local';
+    this.label = opts.label;
+  }
+
+  async listModels() {
+    return scanModels(this.settings).map((m) => ({ id: m.id, size: m.size, source: m.source }));
+  }
+
+  async chat(args) {
+    const m = resolveModelFile(this.settings, this.model);
+    if (!m) throw new LLMError(L(`No encuentro el modelo "${this.model}" en tus carpetas de modelos`, `Model "${this.model}" not found in your model folders`), { status: 404 });
+    let url;
+    try {
+      url = await localEngine.ensure(m, this.settings);
+    } catch (e) {
+      throw Object.assign(new LLMError(e.message, { status: 0 }), { engine: e.code || 'LOAD_FAILED' });
+    }
+    const client = new OpenAIClient({ ...this.opts, baseUrl: `${url}/v1`, model: m.id, label: m.id });
+    return client.chat(args);
+  }
+}
+
 export function createSingleClient(settings, providerName, model) {
   const provider = resolveProvider(settings, providerName);
   if (!provider) throw new LLMError(L(`Proveedor desconocido: ${providerName}. Usa /setup o /provider.`, `Unknown provider: ${providerName}. Use /setup or /provider.`));
   const o = baseOpts(settings, provider, model);
   let client;
-  if (provider.type === 'ollama') client = new OllamaClient(o);
+  if (provider.type === 'local') client = new LocalClient(o, settings);
+  else if (provider.type === 'ollama') client = new OllamaClient(o);
   else if (provider.type === 'codice') client = new RemoteClient(o);
   else client = new OpenAIClient(o);
   client.providerName = providerName;
