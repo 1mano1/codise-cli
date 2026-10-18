@@ -9,9 +9,10 @@ Autor: Imanol. Carpeta: `C:\ProyectosIA_Imanol\Codice`. Comando: `codice`. Paque
 
 ## Estado actual
 
-- **Fase 0 — Diseño (hecho, pendiente de aprobación):** estilo de la terminal diseñado en Figma (ver sección
-  "Diseño de la terminal"). No escribir código de la app hasta que el usuario apruebe el diseño.
-- La estructura de carpetas (`bin/`, `src/llm`, `src/tools`, `src/util`, `test/`, `examples/`) ya existe, vacía.
+- **v0.1.0 implementada**: todas las fases del plan están en `dev` (núcleo, UI, proveedores, herramientas, agente,
+  permisos/hooks/sesiones, extensiones, remoto, personalización, accesibilidad, pruebas y CI).
+- Pruebas: `npm test` (unitarias + e2e con servidor LLM falso). CI en GitHub Actions (Windows/Linux/macOS × Node 18/20/22).
+- Pendiente de probar a mano por el usuario con un modelo real y una terminal interactiva.
 
 ## Objetivo (paridad con Claude Code)
 
@@ -197,7 +198,7 @@ Tablero "Accesibilidad (HCI)" en Figma. Reglas que el código debe cumplir:
 
 ## Plan por fases
 
-0. Diseño en Figma: pantallas, temas, mascotas, accesibilidad, nombre. ← **hecho, esperando aprobación**
+0. Diseño en Figma: pantallas, temas, mascotas, accesibilidad, nombre. ✓
 1. Núcleo: config, motor de temas (carga `design/themes.json`, degradado de colores, NO_COLOR), clientes LLM
    (Ollama + OpenAI), bucle del agente, herramientas básicas, REPL con el estilo del diseño.
 2. Permisos, hooks, sesiones, compactado, `/rewind`.
@@ -206,3 +207,17 @@ Tablero "Accesibilidad (HCI)" en Figma. Reglas que el código debe cumplir:
 5. Personalización: `/theme`, `/config`, `/mascot` (render con medios bloques, estados, mascotas propias, PNG).
 6. Accesibilidad: modo lector de pantalla, `reduceMotion`, validación de contraste de temas propios.
 7. Pruebas, README, ejemplos (`examples/plugin-ejemplo`) y `npm link`.
+
+## Flujo de trabajo con git (pedido por el usuario)
+
+Repo: https://github.com/1mano1/codise-cli
+
+- `main`: estable, solo recibe merges desde `dev`.
+- `dev`: integración. Todo entra por **pull request** y se fusiona ahí.
+- Una rama por tema desde `dev`, con nombre en inglés: `feat/core`, `feat/terminal-ui`, `feat/llm-providers`,
+  `feat/tools`, `feat/agent-loop`, `feat/permissions-hooks-sessions`, `feat/extensions` (skills, agents,
+  commands, plugins, MCP), `feat/remote-serve`, `feat/customization`, `feat/accessibility`, `test/suite`, `docs/readme`.
+- **Commits y PR en inglés**, cortos, profesionales y al punto (Conventional Commits: `feat:`, `fix:`, `docs:`,
+  `test:`, `refactor:`, `chore:`). Nada de explicaciones largas ni tono de tutorial.
+- **Sin rastro de IA**: no agregar `Co-Authored-By` de Claude ni "Generated with Claude Code" en commits ni PR.
+- PR → `dev` con resumen breve y cómo se probó; se fusiona y se borra la rama.
