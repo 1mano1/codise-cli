@@ -231,6 +231,24 @@ export async function unitTests(t) {
     }
   });
 
+  await t('memoria: CODICE.md y archivos de contexto de otros agentes', async (assert) => {
+    const { loadMemory } = await import('../src/memory.js');
+    const root = tmp();
+    const w = (rel, text) => { const p = path.join(root, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); };
+    w('CODICE.md', 'usa pnpm');
+    w('CLAUDE.md', 'claude');
+    w('AGENTS.md', 'agents');
+    w('GEMINI.md', 'gemini');
+    w('.github/copilot-instructions.md', 'copilot');
+    w('.cursor/rules/estilo.mdc', '---\nglobs: "*.ts"\n---\ncursor rule');
+    w('.clinerules', 'cline');
+    const mem = loadMemory(root, root, { compat: true });
+    const agents = mem.map((m) => m.agent);
+    for (const a of ['Códice', 'Claude Code', 'Codex / OpenCode', 'Gemini CLI', 'GitHub Copilot', 'Cursor', 'Cline']) assert(agents.includes(a), `falta ${a}: ${agents}`);
+    assert(mem.find((m) => m.agent === 'Cursor').content.trim() === 'cursor rule', 'sin frontmatter en reglas de Cursor');
+    assert(loadMemory(root, root, { compat: false }).every((m) => m.agent === 'Códice'), 'compat desactivado: solo CODICE.md');
+  });
+
   await t('motor local: paquetes por sistema y nombre de repo de Hugging Face', async (assert) => {
     const E = await import('../src/local/engine.js');
     const HF = await import('../src/local/hf.js');
