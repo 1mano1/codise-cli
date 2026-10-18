@@ -5,6 +5,7 @@ import { HOME, VERSION } from './config.js';
 import { c } from './ui/theme.js';
 import * as ui from './ui/output.js';
 import { Input } from './ui/input.js';
+import { BoxInput } from './ui/editor.js';
 import { select } from './ui/select.js';
 import { createUI } from './ui/bridge.js';
 import { Agent } from './agent/agent.js';
@@ -241,8 +242,10 @@ class Repl {
       this.session.save();
       if (rt.settings.notifications && Date.now() - t0 > 15000) process.stdout.write('\x07');
     }
-    const secs = Date.now() - t0;
-    if (secs > 20000) ui.hint(`(${formatDuration(secs)})`);
+    // el tiempo de respuesta va en la barra de estado, no en la conversación
+    rt.lastResponseMs = Date.now() - t0;
+    this.input.refreshBelow?.();
+    if (!this.input.box && rt.lastResponseMs > 20000) ui.hint(`(${formatDuration(rt.lastResponseMs)})`);
   }
 
   abort() {
@@ -309,7 +312,10 @@ class Repl {
 
 export async function startRepl(runtime, { session, initialPrompt = null } = {}) {
   let repl;
-  const input = new Input({
+  // Caja de escritura (diseño v2) en terminales interactivas; entrada lineal con lector de pantalla o sin TTY.
+  const useBox = Boolean(process.stdin.isTTY && process.stdout.isTTY && !runtime.settings.accessibility?.screenReader && process.env.TERM !== 'dumb');
+  const InputClass = useBox ? BoxInput : Input;
+  const input = new InputClass({
     historyFile: path.join(HOME, 'history'),
     getCommands: () => repl?.commandList() || [],
     getStatus: () => repl?.status() || '',

@@ -10,6 +10,7 @@ process.env.NO_COLOR = '1';
 
 const { unitTests } = await import('./unit.js');
 const { e2eTests } = await import('./e2e.js');
+const { uiTests } = await import('./ui.js');
 
 const filter = process.argv[2] || '';
 let passed = 0, failed = 0;
@@ -35,7 +36,7 @@ async function t(name, fn) {
   }
 }
 
-for (const suite of [unitTests, e2eTests]) await suite(t);
+for (const suite of [unitTests, e2eTests, uiTests]) await suite(t);
 fs.rmSync(home, { recursive: true, force: true });
 console.log(`\n${passed} correctas, ${failed} fallidas`);
 process.exitCode = failed ? 1 : 0;

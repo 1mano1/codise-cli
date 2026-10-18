@@ -1,7 +1,7 @@
 // Configuración inicial (primera vez o /setup): idioma → tema → cómo usar modelos.
 import { VERSION, PRESETS } from './config.js';
 import { c, style, allThemes, setTheme } from './ui/theme.js';
-import { loadMascots, resolveMascot } from './ui/mascot.js';
+import { loadMascots, resolveMascot, renderMascot } from './ui/mascot.js';
 import * as ui from './ui/output.js';
 import { select } from './ui/select.js';
 import { setLanguage, L } from './i18n.js';
@@ -16,7 +16,7 @@ const API_SERVICES = [
 ];
 
 function clear() {
-  if (process.stdout.isTTY && !ui.isScreenReader()) process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+  ui.clearScreen();
 }
 
 function header(step, total) {
@@ -117,6 +117,16 @@ async function setupRemote(runtime, input) {
 }
 
 export async function runOnboarding(runtime, input) {
+  // durante el asistente no se muestra la caja de escritura ni la barra de estado (no abrumar)
+  input?.setHidden?.(true);
+  try {
+    return await onboardingSteps(runtime, input);
+  } finally {
+    input?.setHidden?.(false);
+  }
+}
+
+async function onboardingSteps(runtime, input) {
   // 1. Idioma
   header(1, 3);
   const lang = await select(input, {
@@ -145,7 +155,7 @@ export async function runOnboarding(runtime, input) {
       const pet = resolveMascot({ ...runtime.settings, theme: opt.value, mascot: { name: 'auto' } }, mascots);
       return [
         '',
-        ...ui.artWithMascot(pet),
+        ...renderMascot(pet).map((l) => `  ${l}`),
         '',
         `  ${c.accent('›', { bold: true })} ${c.primary(L('arregla el bug del login', 'fix the login bug'))}`,
         `  ${c.success('●', { bold: true })} ${style('Edit', { bold: true, fg: 'text/primary' })}${c.muted('(src/auth.ts)')}  ${c.dim(L('└ 1 cambio', '└ 1 change'))}`,

@@ -3,9 +3,10 @@
 import { c, style, visibleWidth } from './theme.js';
 import { isScreenReader, ensureNewline, println, width, fit } from './output.js';
 import { L } from '../i18n.js';
+import { liveActive, setOverlay, drawLive } from './live.js';
 
 // options: [{ label, value, hint, hintColor, disabled }]
-export async function select(input, { title, options, initial = 0, footer, extra, collapse = true, erase = false, pre = [], onChange }) {
+export async function select(input, { title, options, initial = 0, footer, extra, collapse = true, erase = false, pre = [], onChange, tone = null }) {
   if (!options.length) return null;
   if (!input?.tty || isScreenReader()) {
     for (const l of pre) println(l.replace(/\x1b\[[0-9;]*m/g, ''));
@@ -17,23 +18,49 @@ export async function select(input, { title, options, initial = 0, footer, extra
   const out = process.stdout;
   const w = Math.min(width() - 2, 110);
 
+  const live = liveActive();
   const render = () => {
     onChange?.(options[sel], sel);
     const lines = [...pre];
     if (title) lines.push(title);
+    // con la caja de entrada activa, el menú es un diálogo encima de ella: se limita su alto a la pantalla
+    let first = 0, last = options.length;
+    if (live) {
+      const room = Math.max(5, (process.stdout.rows || 30) - 9 - lines.length - (extra ? (extra(options[sel], sel) || []).length : 0));
+      if (options.length > room) {
+        first = Math.min(Math.max(0, sel - Math.floor(room / 2)), options.length - room);
+        last = first + room;
+      }
+    }
     options.forEach((o, i) => {
+      if (i < first || i >= last) return;
       const isSel = i === sel;
       const num = i < 9 ? `${i + 1}.` : '  ';
       let line = `${isSel ? c.accent('› ', { bold: true }) : '  '}${isSel ? c.accent(num) : c.dim(num)} ${isSel ? style(o.label, { bold: true, fg: 'text/primary' }) : o.disabled ? c.dim(o.label) : c.muted(o.label)}`;
       if (o.hint) line += `  ${style(o.hint, { fg: o.hintColor || 'text/dim' })}`;
       if (isSel) {
-        const pad = Math.max(0, w - visibleWidth(line));
+        // dentro del diálogo, el resaltado llega justo al borde interior (sin cortar)
+        const target = live ? Math.max(20, (process.stdout.columns || 80) - 5) : w;
+        const pad = Math.max(0, target - visibleWidth(line));
         line = style(line + ' '.repeat(pad), { bg: 'bg/elevated' });
       }
       lines.push(line);
     });
+    if (live && (first > 0 || last < options.length)) lines.push(c.dim(`   ${first > 0 ? '↑ ' : ''}${last < options.length ? '↓ ' : ''}${L(`${options.length} opciones`, `${options.length} options`)}`));
     if (extra) for (const l of extra(options[sel], sel) || []) lines.push(l);
     lines.push(c.dim(footer || L('↑↓ elegir · enter confirmar · esc cancelar', '↑↓ move · enter select · esc cancel')));
+    if (live) {
+      const W = Math.max(24, (process.stdout.columns || 80) - 1);
+      const b = (s) => style(s, { fg: tone || 'border/default' });
+      const inner = W - 4;
+      setOverlay([
+        b(`╭${'─'.repeat(W - 2)}╮`),
+        ...lines.map((l) => { const f = fit(l, inner); return `${b('│')} ${f}${' '.repeat(Math.max(0, inner - visibleWidth(f)))} ${b('│')}`; }),
+        b(`╰${'─'.repeat(W - 2)}╯`),
+      ]);
+      drawLive();
+      return;
+    }
     if (drawn) out.write(`\x1b[${drawn}A\r\x1b[J`);
     // cada línea debe caber en un renglón: si se partiera, el redibujado se descuadra
     const safe = lines.map((l) => fit(l, Math.max(20, (process.stdout.columns || 80) - 1)));
@@ -44,6 +71,16 @@ export async function select(input, { title, options, initial = 0, footer, extra
   return new Promise((resolve) => {
     let release;
     const finish = (value) => {
+      if (live) {
+        setOverlay(null);
+        release();
+        if (!erase && collapse && title) {
+          const chosen = value == null ? c.dim(L('cancelado', 'cancelled')) : style(options[sel].label, { fg: 'accent/soft', bold: true });
+          println(`${title} ${c.dim('→')} ${chosen}`);
+        }
+        resolve(value);
+        return;
+      }
       release();
       if (erase) out.write(`\x1b[${drawn}A\r\x1b[J`);
       else if (collapse) {

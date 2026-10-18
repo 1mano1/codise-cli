@@ -284,9 +284,17 @@ Pedido del usuario: no tener que "encender" el modelo aparte; elegirlo desde Có
   `~/.gemini/GEMINI.md`, `~/.qwen/QWEN.md`. Se desactiva con `compat.claude: false`.
 - `/init` incorpora lo vigente de esos archivos a `CODICE.md` sin borrarlos; `/memory` muestra de qué agente es cada uno.
 
-## v2 de la interfaz de consola — PENDIENTE DE APROBACIÓN (no implementar hasta el visto bueno)
+## v2 de la interfaz de consola — APROBADA E IMPLEMENTADA (rama `feat/console-v2`)
 
-Diseño en Figma, sección "v2 · Estructura de la consola (propuesta)" (pantallas A–D + notas HCI):
+Diseño en Figma, sección "v2 · Estructura de la consola (propuesta)" (pantallas A–D + notas HCI). Implementación:
+- `src/ui/live.js`: zona viva al pie (spinner + diálogo + caja + estado); todo se imprime encima (`writeAbove`).
+- `src/ui/editor.js` (`BoxInput`): editor propio en modo raw (multilínea, pegado entre corchetes, historial,
+  paleta, escritura anticipada que queda en cola mientras el agente trabaja). Con lector de pantalla, `TERM=dumb`
+  o sin TTY se usa la entrada lineal clásica (`src/ui/input.js`).
+- `select()` se dibuja como diálogo dentro de la zona viva (con `tone` para el ámbar de permisos).
+- Pruebas: `test/fixtures/vt.js` (terminal virtual) + `test/ui-harness.js` y `test/ui-onboarding.js` → `test/ui.js`.
+
+Criterios del diseño:
 - Bienvenida compacta en un contenedor: mascota pequeña + versión, modelo, carpeta y 3 atajos (sin banner gigante).
 - Caja de escritura fija abajo, con borde de acento cuando tiene el foco; crece con el texto (hasta ~8 líneas).
 - Barra de estado DEBAJO de la caja (modo, shift+tab, modelo, % contexto, tiempo de la última respuesta);

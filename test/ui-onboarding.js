@@ -1,0 +1,53 @@
+// Asistente de inicio dentro de la caja v2, en terminal virtual. Imprime capturas en JSON.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { VirtualTerminal } from './fixtures/vt.js';
+
+const realWrite = process.stdout.write.bind(process.stdout);
+const vt = new VirtualTerminal(90, 40);
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'codice-onb-'));
+const proj = path.join(home, 'proyecto');
+fs.mkdirSync(path.join(proj, '.git'), { recursive: true });
+process.env.CODICE_HOME = home;
+process.env.FORCE_COLOR = '3';
+process.env.OLLAMA_MODELS = path.join(home, 'sin-ollama');
+process.chdir(proj);
+Object.assign(process.stdout, { isTTY: true, columns: 90, rows: 40 });
+process.stdout.write = (d) => { vt.write(d); return true; };
+process.stdout.on = () => process.stdout;
+process.stdout.off = () => process.stdout;
+process.stdin.isTTY = true;
+process.stdin.setRawMode = () => {};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const key = (s, k = {}) => process.stdin.emit('keypress', s, { name: s, sequence: s, ...k });
+const waitFor = async (pred, ms = 8000) => { const t0 = Date.now(); while (!pred() && Date.now() - t0 < ms) await sleep(25); return pred(); };
+
+const shots = {};
+const { Runtime } = await import('../src/runtime.js');
+const { Session } = await import('../src/session.js');
+const { startRepl } = await import('../src/repl.js');
+const runtime = new Runtime({ cwd: proj });
+startRepl(runtime, { session: new Session({ cwd: proj }) });
+await waitFor(() => vt.screen().includes('Choose your language'));
+await sleep(80);
+shots.idioma = vt.screen();
+key('', { name: 'down' });
+key('\r', { name: 'return' });
+await waitFor(() => vt.screen().includes('Choose a theme'));
+await sleep(80);
+shots.tema = vt.screen();
+key('', { name: 'down' });
+key('', { name: 'down' });
+await sleep(60);
+shots.temaMovido = vt.screen();
+key('\r', { name: 'return' });
+await waitFor(() => vt.screen().includes('How do you want to run models'));
+await sleep(80);
+shots.conexion = vt.screen();
+key('4', { name: '4' });
+await waitFor(() => vt.screen().includes('╰') && vt.screen().includes('Códice') && !vt.screen().includes('How do you want'));
+await sleep(150);
+shots.final = vt.screen();
+// esperar a que la salida se escriba completa (en macOS las tuberías son asíncronas)
+realWrite(`${JSON.stringify(shots)}\n`, () => process.exit(0));
