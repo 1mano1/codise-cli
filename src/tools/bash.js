@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { truncateMiddle } from '../util/fs.js';
+import { L } from '../i18n.js';
 
 let cachedShell = null;
 
@@ -70,7 +71,7 @@ export function runShell(command, { cwd, timeout = 120000, signal, shell, env } 
     signal?.addEventListener('abort', onAbort, { once: true });
     child.on('error', (e) => {
       clearTimeout(timer);
-      resolve({ code: -1, output: `No se pudo ejecutar el shell (${sh}): ${e.message}`, killed });
+      resolve({ code: -1, output: L(`No se pudo ejecutar el shell (${sh}): ${e.message}`, `Could not start the shell (${sh}): ${e.message}`), killed });
     });
     child.on('close', (code) => {
       clearTimeout(timer);
@@ -98,15 +99,15 @@ export const Bash = {
   async run(a, ctx) {
     const timeout = Math.min(Number(a.timeout) || 120000, 600000);
     const r = await runShell(String(a.command), { cwd: ctx.cwd, timeout, signal: ctx.signal, shell: detectShell(ctx.runtime.settings) });
-    if (r.killed === 'abort') throw Object.assign(new Error('Interrumpido por el usuario'), { name: 'AbortError' });
+    if (r.killed === 'abort') throw Object.assign(new Error(L('Interrumpido por el usuario', 'Interrupted by the user')), { name: 'AbortError' });
     let out = truncateMiddle(r.output.replace(/\r\n/g, '\n').trimEnd(), 30000);
-    if (r.killed === 'timeout') out += `\n[comando detenido: superó ${timeout} ms]`;
+    if (r.killed === 'timeout') out += `\n[command stopped: exceeded ${timeout} ms]`;
     const lines = out ? out.split('\n') : [];
     const display = r.code === 0
-      ? (lines.length ? `${lines.slice(0, 3).join('\n')}${lines.length > 3 ? `\n… ${lines.length - 3} líneas más` : ''}` : 'Sin salida')
-      : `Código de salida ${r.code}${lines.length ? ` · ${lines.at(-1).slice(0, 120)}` : ''}`;
+      ? (lines.length ? `${lines.slice(0, 3).join('\n')}${lines.length > 3 ? L(`\n… ${lines.length - 3} líneas más`, `\n… ${lines.length - 3} more lines`) : ''}` : L('Sin salida', 'No output'))
+      : `${L('Código de salida', 'Exit code')} ${r.code}${lines.length ? ` · ${lines.at(-1).slice(0, 120)}` : ''}`;
     return {
-      content: `${out || '(sin salida)'}${r.code !== 0 ? `\n[exit code ${r.code}]` : ''}`,
+      content: `${out || '(no output)'}${r.code !== 0 ? `\n[exit code ${r.code}]` : ''}`,
       display,
       isError: r.code !== 0,
     };
