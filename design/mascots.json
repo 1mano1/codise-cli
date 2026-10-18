@@ -1,0 +1,15 @@
+{
+  "$comment": "Mascotas incluidas (mismo formato que una mascota propia). '.' = transparente. eyes/mouth indican qué caracteres usar para generar los estados.",
+  "chispa": {"name":"Chispa","eyes":"k","mouth":"m","verbs":["Encendiendo…","Chisporroteando…","Avivando…","Prendiendo ideas…"],
+    "palette":{"O":"#FF6A1A","Y":"#FFD24D","k":"#2A1200","m":"#B33A00"},
+    "pixels":["......O.....",".....OO.....","....OOO..O..","...OOYOO.OO.","..OOYYYOOOO.",".OOYYYYYYOO.",".OYYkYYkYYO.","OOYYYYYYYYOO","OYYYmYYmYYYO","OOYYYmmYYYOO",".OOYYYYYYOO.","..OOOOOOOO.."]},
+  "ajolote": {"name":"Ajolote","eyes":"k","mouth":"m","verbs":["Regenerando…","Nadando…","Burbujeando…","Agitando branquias…"],
+    "palette":{"G":"#E0457B","P":"#FFB3C7","k":"#1A1A1A","m":"#C2547A","c":"#FF8FAB"},
+    "pixels":["G..G........G..G",".GG..PPPPPP..GG.","GGGGPPPPPPPPGGGG","..PPPPPPPPPPPP..","GGPPPkPPPPkPPPGG","..PcPPPPPPPPcP..","GGPPPPmPPmPPPPGG","..PPPPPmmPPPPP..",".GG.PPPPPPPP.GG.","....PP....PP...."]},
+  "nahual": {"name":"Nahual","eyes":"k","mouth":"m","verbs":["Transformándose…","Invocando…","Cambiando de piel…","Acechando…"],
+    "palette":{"J":"#E8A33D","s":"#7A4A1E","e":"#B48CFF","k":"#1A1033","n":"#F28C9A","m":"#5A3414"},
+    "pixels":[".J..........J.",".JJ........JJ.",".JJJJJJJJJJJJ.","JJJsJJJJJJsJJJ","JJJJJJssJJJJJJ","JJeeJJJJJJeeJJ","JJekJJJJJJekJJ","JsJJJJnnJJJJsJ","JJJJJmJJmJJJJJ",".JJsJJmmJJsJJ.","..JJJJJJJJJJ.."]},
+  "xolo": {"name":"Xolo","eyes":"k","mouth":"m","verbs":["Olfateando…","Excavando…","Rastreando…","Moviendo la cola…"],
+    "palette":{"X":"#4A5063","p":"#F29CB0","h":"#8A93AB","a":"#FFB347","k":"#111111","n":"#1A1A1A","m":"#2A2E3A","t":"#FF7A9A"},
+    "pixels":[".X..........X.",".XX........XX.",".XpX......XpX.",".XpXX.hh.XXpX.",".XXXXXhhXXXXX.","XXXXXXXXXXXXXX","XXaaXXXXXXaaXX","XXakXXXXXXakXX","XXXXXXXXXXXXXX",".XXXXXnnXXXXX.","..XXXmXXmXXX..","...XXXttXXX..."]}
+}
