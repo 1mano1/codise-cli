@@ -3,7 +3,7 @@ import readline from 'node:readline';
 import fs from 'node:fs';
 import path from 'node:path';
 import { c, style, visibleWidth } from './theme.js';
-import { isScreenReader, width } from './output.js';
+import { isScreenReader, width, fit } from './output.js';
 
 const MAX_HISTORY = 500;
 
@@ -177,7 +177,7 @@ export class Input {
     readline.cursorTo(out, pos.cols);
     out.write('\x1b7');
     out.write('\x1b[1B\r\x1b[J');
-    out.write(lines.join('\n'));
+    out.write(lines.map((l) => fit(l, Math.max(20, (out.columns || 80) - 1))).join('\n'));
     out.write('\x1b8');
     this.belowRows = n;
   }
