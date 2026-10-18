@@ -473,6 +473,26 @@ export const BUILTIN_COMMANDS = {
     },
   },
 
+  bench: {
+    description: 'Mide velocidad y soporte de herramientas de tus modelos',
+    argumentHint: '[modelo…]',
+    async run(args, { runtime }) {
+      const { bench } = await import('../remote.js');
+      await bench(args.trim() ? args.trim().split(/\s+/) : [], {}, runtime);
+      runtime.toolModes = {};
+    },
+  },
+
+  connect: {
+    description: 'Conecta con una PC que ejecuta "codice serve"',
+    argumentHint: '<url> <token> [nombre]',
+    async run(args, { runtime }) {
+      const [url, token, name] = args.trim().split(/\s+/);
+      const { connect } = await import('../remote.js');
+      await connect([url], { token, name: name || 'pc-remota' }, runtime);
+    },
+  },
+
   version: { description: 'Versión de Códice', async run() { ui.println(`codice ${VERSION}`); } },
 };
 

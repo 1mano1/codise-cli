@@ -107,6 +107,35 @@ export async function e2eTests(t) {
       assert(r.stdout.includes('peticiones'), '/cost');
     });
 
+    await t('PC remota: codice serve + codice connect + tarea a través del proxy', async (assert) => {
+      const port = 20000 + Math.floor(Math.random() * 20000);
+      const pcHome = path.join(work, '.home-pc');
+      const server = spawn(process.execPath, [BIN, 'serve', '--port', String(port), '--host', '127.0.0.1', '--token', 'secreto123', '--backend', 'ollama', '--backend-url', m.url], { env: { ...process.env, CODICE_HOME: pcHome, NO_COLOR: '1' } });
+      let log = '';
+      server.stdout.on('data', (d) => { log += d; });
+      server.stderr.on('data', (d) => { log += d; });
+      try {
+        const t0 = Date.now();
+        while (!log.includes('codice connect') && Date.now() - t0 < 10000) await new Promise((r) => setTimeout(r, 100));
+        assert(log.includes('codice connect'), `serve no arrancó: ${log}`);
+        const laptop = { cwd, home: path.join(work, '.home-laptop') };
+        const bad = await runCli(['connect', `http://127.0.0.1:${port}`, '--token', 'malo'], laptop);
+        assert(bad.status === 1 && /Token inválido/.test(bad.stdout + bad.stderr), 'token incorrecto rechazado');
+        const ok = await runCli(['connect', `http://127.0.0.1:${port}`, '--token', 'secreto123', '--name', 'pc-casa'], laptop);
+        assert(ok.status === 0, `connect falló: ${ok.stdout}${ok.stderr}`);
+        const cfg = JSON.parse(fs.readFileSync(path.join(laptop.home, 'settings.json'), 'utf8'));
+        assert(cfg.provider === 'pc-casa' && cfg.providers['pc-casa'].type === 'codice', 'proveedor guardado');
+        m.push({ content: 'Respondo desde la PC.' });
+        const before = m.requests.length;
+        const r = await runCli(['-p', 'hola'], laptop);
+        assert(r.stdout.includes('Respondo desde la PC.'), `respuesta: ${r.stdout} ${r.stderr}`);
+        const viaProxy = m.requests.slice(before).find((q) => q.url === '/api/chat');
+        assert(viaProxy && !viaProxy.headers.authorization, 'petición llegó al backend Ollama sin el token');
+      } finally {
+        server.kill();
+      }
+    });
+
     await t('error de conexión con mensaje accionable', async (assert) => {
       const r = await runCli(['-p', 'hola', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'x'], opts);
       assert(r.status === 1, `código ${r.status}`);
