@@ -14,6 +14,7 @@ import { Session } from '../session.js';
 import { detectShell, shellLabel } from '../tools/bash.js';
 import { formatTokens, formatDuration, relPath } from '../util/fs.js';
 import { stripThinking } from '../llm/stream.js';
+import { customizeCommands } from './customize.js';
 
 const fmtSize = (b) => (b ? `${(b / 1e9).toFixed(1)} GB` : '');
 
@@ -533,3 +534,7 @@ async function createAgentWizard({ runtime, repl }) {
   runtime.reload();
   ui.success(`Agente guardado en ${file}. Úsalo pidiéndole a Códice que delegue en "${def.name}".`);
 }
+
+// Personalización (/theme, /mascot y panel /config).
+const legacyConfig = BUILTIN_COMMANDS.config.run;
+Object.assign(BUILTIN_COMMANDS, customizeCommands({ legacyConfig }));

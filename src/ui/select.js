@@ -4,7 +4,7 @@ import { c, style, visibleWidth } from './theme.js';
 import { isScreenReader, ensureNewline, println, width } from './output.js';
 
 // options: [{ label, value, hint, hintColor, disabled }]
-export async function select(input, { title, options, initial = 0, footer, extra, collapse = true, erase = false, pre = [] }) {
+export async function select(input, { title, options, initial = 0, footer, extra, collapse = true, erase = false, pre = [], onChange }) {
   if (!options.length) return null;
   if (!input?.tty || isScreenReader()) {
     for (const l of pre) println(l.replace(/\x1b\[[0-9;]*m/g, ''));
@@ -17,6 +17,7 @@ export async function select(input, { title, options, initial = 0, footer, extra
   const w = Math.min(width() - 2, 110);
 
   const render = () => {
+    onChange?.(options[sel], sel);
     const lines = [...pre];
     if (title) lines.push(title);
     options.forEach((o, i) => {
