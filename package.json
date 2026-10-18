@@ -1,0 +1,16 @@
+{
+  "name": "codice-cli",
+  "version": "0.1.0",
+  "description": "Códice: agente de programación open source para la terminal que funciona con modelos locales, en la nube o en tu propia PC remota.",
+  "type": "module",
+  "bin": { "codice": "bin/codice.js" },
+  "files": ["bin", "src", "agents", "design", "examples", "README.md", "LICENSE"],
+  "engines": { "node": ">=18.17" },
+  "scripts": {
+    "start": "node bin/codice.js",
+    "test": "node test/run.js"
+  },
+  "keywords": ["ai", "agent", "cli", "ollama", "lmstudio", "local-llm", "coding-assistant", "mcp"],
+  "author": "Imanol Rodríguez",
+  "license": "MIT"
+}
