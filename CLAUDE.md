@@ -261,3 +261,15 @@ Pendiente:
 - Prueba real: el 3B usa herramientas bien pero no resuelve bugs de lógica sencillos y tiende a repetir
   acciones → se añadió detector de bucles y fragmento post-Edit (`fix/small-model-robustness`).
   Para código conviene 7B+ (o API).
+
+## Modelos locales gestionados por Códice (rama )
+
+Pedido del usuario: no tener que "encender" el modelo aparte; elegirlo desde Códice y usarlo.
+- Proveedor  (por defecto): detecta GGUF en ,  del usuario, caché de Hugging Face,
+  LM Studio y Jan, más los modelos de **Ollama** (manifiesto → blob GGUF, sin necesitar Ollama encendido).
+- Al primer mensaje arranca  (puerto libre, , GPU con , respaldo a CPU) y lo apaga al salir
+  o al cambiar de modelo (). Si falta el motor, lo descarga (llama.cpp  fija).
+- : lista, , ,  (Hugging Face, verificación SHA-256,  para privados).
+- Formatos no compatibles (safetensors, ONNX, MLX, GPTQ/AWQ) se detectan y se avisa que busquen la versión GGUF.
+- En la laptop del usuario:  → detecta ; respuesta completa
+  en ~32 s la primera vez (la mayor parte es procesar el prompt de sistema en la iGPU), el motor se apaga al salir.

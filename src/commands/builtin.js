@@ -79,8 +79,13 @@ export const BUILTIN_COMMANDS = {
   },
 
   models: {
-    get description() { return L('Lista los modelos del proveedor actual y permite elegir', 'List the current provider models and pick one'); },
+    get description() { return L('Elige modelo: locales (GGUF/Ollama), descargar de Hugging Face o del proveedor actual', 'Pick a model: local (GGUF/Ollama), download from Hugging Face or from the current provider'); },
+    argumentHint: '[add-dir <path> | dirs | download <user/repo>]',
     async run(args, { runtime, repl }) {
+      if (runtime.providerInfo()?.type === 'local' || /^(add-dir|remove-dir|dirs|download)\b/.test(args.trim())) {
+        const { localModelsCommand } = await import('./localModels.js');
+        return localModelsCommand(args, { runtime, repl });
+      }
       const client = runtime.createClient({ model: runtime.settings.model || 'x' });
       let models;
       runtime.spinner.start(L('Consultando modelos…', 'Fetching models…'));

@@ -44,41 +44,37 @@ async function pickModel(runtime, input, { prefer } = {}) {
 }
 
 async function setupLocal(runtime, input) {
+  const { scanModels } = await import('./local/models.js');
   const { detectBackend } = await import('./remote.js');
-  runtime.spinner.start(L('Buscando Ollama, LM Studio, llama.cpp…', 'Looking for Ollama, LM Studio, llama.cpp…'));
-  const found = await detectBackend();
+  runtime.spinner.start(L('Buscando modelos en tu PC…', 'Looking for models on your computer…'));
+  const files = scanModels(runtime.settings);
+  const server = await detectBackend();
   runtime.spinner.stop();
-  if (!found) {
-    ui.println(c.primary(L('No encontré ningún servidor de modelos en esta PC.', 'No model server found on this computer.'), { bold: true }));
-    ui.println('');
-    ui.println(`  ${c.accent('1.')} ${L('Instala Ollama:', 'Install Ollama:')} ${c.info('winget install Ollama.Ollama')} ${c.dim(L('(o desde ollama.com)', '(or from ollama.com)'))}`);
-    ui.println(`  ${c.accent('2.')} ${L('Descarga un modelo:', 'Download a model:')} ${c.info('ollama pull qwen2.5-coder:3b')}`);
-    ui.println(`  ${c.accent('3.')} ${L('Vuelve aquí y elige “Reintentar”.', 'Come back and choose “Retry”.')}`);
-    ui.println('');
-    const next = await select(input, {
-      title: L('¿Qué hacemos?', 'What next?'),
+  // Sin servidores abiertos: directo a los modelos en archivos (o añadir carpeta / descargar).
+  let how = 'files';
+  if (server) {
+    const serverLabel = Object.values(PRESETS).find((p) => p.baseUrl.replace(/\/+$/, '') === server.url.replace(/\/+$/, ''))?.label || server.url;
+    how = await select(input, {
+      title: L('¿Qué modelos quieres usar?', 'Which models do you want to use?'),
       options: [
-        { label: L('Reintentar', 'Retry'), value: 'retry' },
-        { label: L('Usar una API key', 'Use an API key'), value: 'api' },
-        { label: L('Configurar después', 'Set up later'), value: 'later' },
+        { label: L(`Mis modelos en archivos (${files.length})`, `My model files (${files.length})`), value: 'files', hint: L('Códice los carga solo', 'Códice loads them for you') },
+        { label: L(`${serverLabel}, que ya está abierto (${server.models.length})`, `${serverLabel}, already running (${server.models.length})`), value: 'server' },
       ],
     });
-    if (next === 'retry') return setupLocal(runtime, input);
-    if (next === 'api') return setupApi(runtime, input);
-    return false;
+    if (!how) return false;
   }
-  const url = found.url.replace(/\/+$/, '');
-  const preset = Object.entries(PRESETS).find(([, p]) => p.baseUrl.replace(/\/+$/, '') === url)?.[0] || 'local';
-  if (preset === 'local') runtime.save('providers.local', { type: found.kind, baseUrl: found.url });
-  runtime.save('provider', preset);
-  ui.success(L(`Encontré ${PRESETS[preset]?.label || found.url} con ${found.models.length} modelos.`, `Found ${PRESETS[preset]?.label || found.url} with ${found.models.length} models.`));
-  if (!found.models.length) {
-    ui.hint(L('No tiene modelos todavía. Descarga uno con: ollama pull qwen2.5-coder:3b', 'It has no models yet. Download one with: ollama pull qwen2.5-coder:3b'));
-    return false;
+  if (how === 'server') {
+    const url = server.url.replace(/\/+$/, '');
+    const preset = Object.entries(PRESETS).find(([, p]) => p.baseUrl.replace(/\/+$/, '') === url)?.[0];
+    runtime.save('provider', preset || 'lmstudio');
+    const model = await pickModel(runtime, input);
+    if (model) runtime.save('model', model);
+    return Boolean(model);
   }
-  const model = await pickModel(runtime, input);
-  if (model) runtime.save('model', model);
-  return Boolean(model);
+  const { localModelsMenu } = await import('./commands/localModels.js');
+  if (!files.length) ui.hint(L('No encontré modelos todavía. Añade la carpeta donde los tienes o descarga uno de Hugging Face.', 'No models found yet. Add the folder where you keep them or download one from Hugging Face.'));
+  const id = await localModelsMenu({ runtime, input });
+  return Boolean(id);
 }
 
 async function setupApi(runtime, input) {
@@ -169,7 +165,7 @@ export async function runOnboarding(runtime, input) {
   const how = await select(input, {
     title: L('¿Cómo quieres usar los modelos?', 'How do you want to run models?'),
     options: [
-      { label: L('Modelo local en esta PC', 'Local model on this computer'), value: 'local', hint: 'Ollama, LM Studio, llama.cpp…' },
+      { label: L('Modelo local en esta PC', 'Local model on this computer'), value: 'local', hint: L('tus archivos GGUF, Ollama, LM Studio…', 'your GGUF files, Ollama, LM Studio…') },
       { label: L('API key de un servicio', 'API key from a provider'), value: 'api', hint: 'Gemini, Groq, OpenRouter, OpenAI, Anthropic…' },
       { label: L('Mi otra PC con “codice serve”', 'My other PC running “codice serve”'), value: 'remote' },
       { label: L('Configurar después', 'Set up later'), value: 'later' },

@@ -39,6 +39,13 @@ cd codise-cli
 npm link        # deja disponible el comando "codice"
 ```
 
+## Modelos locales sin instalar nada más
+
+Códice encuentra tus modelos **GGUF** (y los que descargaste con **Ollama**, LM Studio o la caché de Hugging Face), y al elegir uno **arranca el motor llama.cpp solo** y lo apaga al salir. Si no tienes el motor, lo descarga la primera vez (unos 30 MB).
+
+\
+Formatos: **GGUF** y modelos de **Ollama** se usan directo. safetensors/PyTorch, MLX, GPTQ/AWQ/EXL2 no (requieren Python o hardware específico); Códice los señala para que busques su versión GGUF.
+
 ## Inicio rápido (con Ollama)
 
 ```bash

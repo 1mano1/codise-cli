@@ -48,6 +48,8 @@ export function describeError(e, runtime) {
   const p = runtime.providerInfo?.();
   const name = p?.label || provider;
   if (e instanceof LLMError) {
+    if (e.engine === 'NO_ENGINE') return [L('Falta el motor para usar modelos GGUF', 'The engine for GGUF models is missing'), e.message, L('Escribe /models y Códice lo descargará (unos 30 MB, solo una vez).', 'Type /models and Códice will download it (about 30 MB, only once).')];
+    if (e.engine) return [L('No se pudo cargar el modelo', 'Could not load the model'), e.message, L('Prueba un modelo más pequeño (/models) o revisa ~/.codice/logs/llama-server.log.', 'Try a smaller model (/models) or check ~/.codice/logs/llama-server.log.')];
     if (e.network) {
       if (p?.type === 'ollama') return [L('No encuentro Ollama en esta PC', 'Ollama is not running on this computer'), e.message, L('Instálalo desde ollama.com (o ábrelo si ya lo tienes) y descarga un modelo con “ollama pull qwen2.5-coder:3b”. También puedes elegir otra forma de conectarte con /setup.', 'Install it from ollama.com (or open it if you have it) and download a model with “ollama pull qwen2.5-coder:3b”. You can also choose another way to connect with /setup.')];
       if (p?.type === 'codice') return [L(`No pude conectar con tu PC remota (${name})`, `Could not reach your remote PC (${name})`), e.message, L('Revisa que “codice serve” siga abierto en esa PC y que estén en la misma red (o en Tailscale). Usa /setup para cambiar de conexión.', 'Check that “codice serve” is still running on that PC and that you are on the same network (or Tailscale). Use /setup to switch connection.')];
@@ -296,6 +298,8 @@ class Repl {
     this.session.save();
     this.runtime.mcp.stopAll();
     this.runtime.spinner.stop();
+    const { localEngine } = await import('./local/engine.js');
+    localEngine.stop();
     ui.ensureNewline();
     ui.println(c.dim(L('Hasta luego. Retoma esta conversación con: codice --continue', 'Bye. Resume this conversation with: codice --continue')));
     this.input.close();
