@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { loadSettings, findProjectRoot, settingsFiles, saveSetting, resolveProvider, ensureHome, HOME } from './config.js';
 import { readJSON, writeJSON } from './util/fs.js';
-import { setTheme, currentTheme, setColorLevel, detectColorLevel, c } from './ui/theme.js';
+import { setTheme, currentTheme, setColorLevel, detectColorLevel, c, visibleWidth } from './ui/theme.js';
 import { loadMascots, resolveMascot, mascotVerbs } from './ui/mascot.js';
 import { Spinner, configureOutput, warn } from './ui/output.js';
 import { createUI } from './ui/bridge.js';
@@ -15,7 +15,7 @@ import { loadMemory } from './memory.js';
 import { createClient, parseTarget } from './llm/index.js';
 import { BUILTIN_TOOLS } from './tools/index.js';
 import { Checkpoints } from './session.js';
-import { formatTokens } from './util/fs.js';
+import { formatTokens, formatDuration } from './util/fs.js';
 import { setLanguage, L } from './i18n.js';
 import { localEngine } from './local/engine.js';
 
@@ -194,24 +194,30 @@ export class Runtime {
   // ── Estado ─────────────────────────────────────────────────────
   modeLabel() {
     const info = MODE_INFO[this.permissionMode];
-    return { text: `${info.label}${this.permissionMode === 'default' ? L(' (shift+tab para cambiar)', ' (shift+tab to cycle)') : ''}`, color: info.color };
+    return { text: `${info.label}${L(' · shift+tab cambia', ' · shift+tab cycles')}`, color: info.color };
   }
 
   statusLine(agent) {
     const m = this.modeLabel();
-    const mode =m.color === 'status/agent' ? c.agent(m.text) : m.color === 'status/warning' ? c.warning(m.text) : m.color === 'status/error' ? c.error(m.text) : c.muted(m.text);
-    const parts = [this.settings.model || L('sin modelo', 'no model'), this.settings.provider];
+    const mode = m.color === 'status/agent' ? c.agent(m.text) : m.color === 'status/warning' ? c.warning(m.text) : m.color === 'status/error' ? c.error(m.text) : c.muted(m.text);
+    // datos de la derecha por prioridad: si no caben, se quitan los últimos
+    const parts = [this.settings.model || L('sin modelo', 'no model')];
     if (agent) {
       try {
         const u = agent.contextUsage();
         parts.push(`ctx ${Math.min(100, Math.round((u.used / u.max) * 100))} %`);
       } catch { /* sin estimación */ }
     }
+    if (this.offline) parts.push('offline');
+    if (this.lastResponseMs) parts.push(L(`última ${formatDuration(this.lastResponseMs)}`, `last ${formatDuration(this.lastResponseMs)}`));
     const mcpOk = this.mcp.status().filter((s) => s.status === 'conectado').length;
     if (mcpOk) parts.push(`${mcpOk} MCP`);
-    if (this.offline) parts.push('offline');
     if (this.usage.output) parts.push(`${formatTokens(this.usage.input + this.usage.output)} tokens`);
-    return `  ${mode}   ${c.dim(parts.join(' · '))}`;
+    const cols = (process.stdout.columns || 80) - 1;
+    while (parts.length > 1 && 2 + visibleWidth(mode) + 3 + visibleWidth(parts.join(' · ')) > cols) parts.pop();
+    const right = c.dim(parts.join(' · '));
+    const gap = cols - 2 - visibleWidth(mode) - visibleWidth(right);
+    return gap >= 3 ? `  ${mode}${' '.repeat(gap)}${right}` : `  ${mode}`;
   }
 
   themeName() { return currentTheme().name; }

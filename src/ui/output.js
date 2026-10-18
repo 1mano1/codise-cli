@@ -3,8 +3,9 @@ import { c, style, stripAnsi, visibleWidth, colorLevel } from './theme.js';
 import { renderMascot } from './mascot.js';
 import { formatDuration, formatTokens } from '../util/fs.js';
 import { L } from '../i18n.js';
+import { liveActive, writeAbove, eraseLive, drawLive, setLiveSpinner, resetLive } from './live.js';
 
-const opts = { screenReader: false, reduceMotion: false, stream: process.stdout };
+const opts ={ screenReader: false, reduceMotion: false, stream: process.stdout };
 let lastChar = '\n';
 let headerMark = null; // permite reescribir la cabecera de una herramienta si nada se imprimió después
 
@@ -22,10 +23,16 @@ export function width() {
 
 let activeSpinner = null;
 
-// Escribe respetando el spinner: lo borra, escribe y lo vuelve a dibujar debajo.
+// Escribe respetando la zona viva (caja de entrada) o el spinner: los borra, escribe y los vuelve a dibujar.
 export function out(s = '') {
   s = String(s);
   if (!s) return;
+  if (liveActive() && opts.stream === process.stdout) {
+    writeAbove(s);
+    lastChar = '\n';
+    headerMark = null;
+    return;
+  }
   const sp = activeSpinner?.timer ? activeSpinner : null;
   if (sp) opts.stream.write('\r\x1b[2K');
   opts.stream.write(s);
@@ -102,7 +109,7 @@ export function errorBox(title, cause, action) {
   if (action && cause && process.env.CODICE_DEBUG) println(`  ${c.dim(cause)}`);
 }
 
-export function box(lines, { border = 'border/default', title = null, padding = 1 } = {}) {
+export function box(lines, { border = 'border/default', title = null, padding = 1, full = false } = {}) {
   ensureNewline();
   if (opts.screenReader) {
     if (title) println(stripAnsi(title));
@@ -111,16 +118,18 @@ export function box(lines, { border = 'border/default', title = null, padding = 
   }
   const maxInner = width() - 4 - padding * 2;
   const rows = lines.flatMap((l) => (visibleWidth(l) > maxInner && !/\x1b/.test(l) ? wrap(l, maxInner) : [l]));
-  const w = Math.min(width() - 2, Math.max(...rows.map(visibleWidth), title ? visibleWidth(title) + 4 : 0) + padding * 2 + 2);
+  // full: mismo ancho que la caja de escritura (alineados, diseño v2)
+  const w = full ? Math.max(24, (opts.stream.columns || 80) - 1) : Math.min(width() - 2, Math.max(...rows.map(visibleWidth), title ? visibleWidth(title) + 4 : 0) + padding * 2 + 2);
   const inner = w - 2;
   const b = (s) => style(s, { fg: border });
-  println(title ? b('╭─ ') + title + b(` ${'─'.repeat(Math.max(0, inner - visibleWidth(title) - 3))}╮`) : b(`╭${'─'.repeat(inner)}╮`));
+  const outLines = [title ? b('╭─ ') + title + b(` ${'─'.repeat(Math.max(0, inner - visibleWidth(title) - 3))}╮`) : b(`╭${'─'.repeat(inner)}╮`)];
   for (const l of rows) {
     const content = fit(l, inner - padding * 2);
     const pad = inner - padding * 2 - visibleWidth(content);
-    println(`${b('│')}${' '.repeat(padding)}${content}${' '.repeat(Math.max(0, pad))}${' '.repeat(padding)}${b('│')}`);
+    outLines.push(`${b('│')}${' '.repeat(padding)}${content}${' '.repeat(Math.max(0, pad))}${' '.repeat(padding)}${b('│')}`);
   }
-  println(b(`╰${'─'.repeat(inner)}╯`));
+  outLines.push(b(`╰${'─'.repeat(inner)}╯`));
+  out(`${outLines.join('\n')}\n`); // de una vez: sin parpadeo con la zona viva
 }
 
 // ── Banner de inicio ─────────────────────────────────────────────
@@ -156,16 +165,39 @@ export function banner({ version, model, provider, cwd, memory, mascot }) {
     println(L('Escribe /help para ver los comandos.', 'Type /help to see the commands.'));
     return;
   }
+  // Diseño v2: contenedor compacto con la mascota pequeña a la izquierda y la información a la derecha.
+  const pet = width() >= 60 ? renderMascot(mascot, 'idle') : [];
+  const petW = pet.length ? visibleWidth(pet[0]) : 0;
+  const lbl = (s) => c.dim(s.padEnd(9));
+  const home = process.env.USERPROFILE || process.env.HOME || '';
+  const shortCwd = home && cwd.toLowerCase().startsWith(home.toLowerCase()) ? `~${cwd.slice(home.length)}` : cwd;
+  const info = [
+    `${c.accent('✻', { bold: true })} ${c.primary('Códice', { bold: true })}  ${c.dim(`v${version}`)}`,
+    `${lbl(L('modelo', 'model'))}${model ? `${c.soft(model, { bold: true })}  ${c.muted(`· ${provider}`)}` : c.warning(L('sin modelo — escribe /setup', 'no model — type /setup'))}`,
+    `${lbl(L('carpeta', 'folder'))}${c.info(shortCwd)}`,
+  ];
+  if (memory?.length) info.push(`${lbl(L('memoria', 'memory'))}${c.muted(memory.slice(0, 3).join(' · '))}`);
+  info.push(`${c.accent('/help')} ${c.dim(L('comandos', 'commands'))}${c.dim(' · ')}${c.accent('/models')} ${c.dim(L('modelo', 'model'))}${c.dim(' · ')}${c.accent('/theme')} ${c.dim(L('tema', 'theme'))}`);
+  const rows = Math.max(pet.length, info.length);
+  const offPet = Math.max(0, Math.floor((rows - pet.length) / 2));
+  const offInfo = Math.max(0, Math.floor((rows - info.length) / 2));
+  const lines = [];
+  for (let i = 0; i < rows; i++) {
+    const p = petW ? (pet[i - offPet] || ' '.repeat(petW)) : '';
+    lines.push(`${p}${petW ? '   ' : ''}${info[i - offInfo] || ''}`);
+  }
   println('');
-  for (const l of artWithMascot(mascot)) println(l);
-  println('');
-  const parts = [`${c.primary('codice', { bold: true })} ${c.muted(`v${version}`)}`];
-  parts.push(model ? `${c.soft(model, { bold: true })} ${c.dim(`(${provider})`)}` : c.warning(L('sin modelo — escribe /setup', 'no model — type /setup')));
-  parts.push(c.info(cwd));
-  if (memory?.length) parts.push(c.muted(memory[0]));
-  println(parts.join(c.dim('  ·  ')));
-  println(c.dim(L('/help comandos · /theme tema · shift+tab modo · esc interrumpir', '/help commands · /theme theme · shift+tab mode · esc interrupt')));
-  println('');
+  box(lines, { border: 'accent/primary', full: liveActive() });
+}
+
+// Limpia la pantalla sin romper la zona viva (se vuelve a dibujar al pie).
+export function clearScreen() {
+  if (!process.stdout.isTTY || opts.screenReader) return;
+  eraseLive();
+  process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+  resetLive();
+  lastChar = '\n';
+  drawLive();
 }
 
 // ── Markdown en streaming (por líneas) ───────────────────────────
@@ -259,6 +291,22 @@ export class Spinner {
     this.tokens = 0;
     this.active = true;
     if (opts.screenReader) { ensureNewline(); println(`${label ? `${label}: ` : ''}${L('Trabajando…', 'Working…')}`); this.active = false; return; }
+    // Con la caja de entrada activa, el spinner vive en la zona fija, justo encima de la caja.
+    if (liveActive() && opts.stream === process.stdout) {
+      let i = 0;
+      const lineFn = () => {
+        const secs = formatDuration(Date.now() - this.t0);
+        const tk = this.tokens ? ` · ↓ ${formatTokens(this.tokens)} tokens` : '';
+        const frame = opts.reduceMotion ? '✻' : FRAMES[i % FRAMES.length];
+        return `${c.soft(frame)} ${this.label ? c.agent(`${this.label} `) : ''}${c.soft(this.verb, { italic: true })}  ${c.dim(`${secs}${tk} · ${L('esc interrumpe', 'esc interrupts')}`)}`;
+      };
+      setLiveSpinner(lineFn);
+      this.liveMode = true;
+      drawLive();
+      if (!opts.reduceMotion) this.timer = setInterval(() => { i++; drawLive(); }, 150);
+      else this.timer = setInterval(() => drawLive(), 1000);
+      return;
+    }
     if (!opts.stream.isTTY || opts.reduceMotion) {
       ensureNewline();
       opts.stream.write(`${c.soft('✻')} ${c.soft(verb, { italic: true })} ${c.dim(L('(esc para interrumpir)', '(esc to interrupt)'))}`);
@@ -283,6 +331,14 @@ export class Spinner {
   addTokens(n) { this.tokens += n; }
 
   stop() {
+    if (this.liveMode) {
+      if (this.timer) { clearInterval(this.timer); this.timer = null; }
+      this.liveMode = false;
+      setLiveSpinner(null);
+      drawLive();
+      this.active = false;
+      return;
+    }
     if (this.timer) { clearInterval(this.timer); this.timer = null; opts.stream.write('\r\x1b[2K'); lastChar = '\n'; }
     if (this.static) { opts.stream.write('\n'); lastChar = '\n'; this.static = false; }
     if (activeSpinner === this) activeSpinner = null;
@@ -310,7 +366,13 @@ export function toolEnd(name, summary, { ok, text, indent = '' }) {
     println(`${L('Herramienta', 'Tool')} ${name}${ok ? L(', correcta', ', succeeded') : L(', con error', ', failed')}${summary ? `: ${summary}` : ''}. ${text || ''}`.trim());
     return;
   }
-  if (headerMark && headerMark.name === name && opts.stream.isTTY && colorLevel() > 0) {
+  if (headerMark && headerMark.name === name && liveActive() && opts.stream === process.stdout && colorLevel() > 0) {
+    // la cabecera está justo encima de la zona viva: se borra la zona, se reescribe la cabecera y se redibuja
+    eraseLive();
+    opts.stream.write(`\x1b[1A\r\x1b[2K${header(name, summary, ok ? 'ok' : 'error', indent)}\n`);
+    lastChar = '\n';
+    drawLive();
+  } else if (headerMark && headerMark.name === name && opts.stream.isTTY && colorLevel() > 0) {
     const sp = activeSpinner?.timer ? activeSpinner : null;
     opts.stream.write(`${sp ? '\r\x1b[2K' : ''}\x1b[1A\r\x1b[2K${header(name, summary, ok ? 'ok' : 'error', indent)}\n`);
     lastChar = '\n';
@@ -390,7 +452,8 @@ export function diffLines(oldText, newText, { startLine = 1, maxLines = 24, inde
 }
 
 export function printDiff(oldText, newText, o = {}) {
-  for (const l of diffLines(oldText, newText, o)) println(l);
+  const lines = diffLines(oldText, newText, o);
+  if (lines.length) out(`${lines.join('\n')}\n`);
 }
 
 // ── Tareas ───────────────────────────────────────────────────────
@@ -399,11 +462,12 @@ export function printTodos(todos) {
     todos.forEach((t, i) => println(`${L('Tarea', 'Task')} ${i + 1}, ${t.status === 'completed' ? L('hecha', 'done') : t.status === 'in_progress' ? L('en curso', 'in progress') : L('pendiente', 'pending')}: ${t.content}`));
     return;
   }
-  for (const t of todos) {
-    if (t.status === 'completed') println(`      ${c.success('☑')} ${style(t.content, { fg: 'text/dim', strike: true })}`);
-    else if (t.status === 'in_progress') println(`      ${c.accent('◐', { bold: true })} ${style(t.content, { bold: true, fg: 'text/primary' })}`);
-    else println(`      ${c.muted('☐')} ${c.muted(t.content)}`);
-  }
+  const lines = todos.map((t) => {
+    if (t.status === 'completed') return `      ${c.success('☑')} ${style(t.content, { fg: 'text/dim', strike: true })}`;
+    if (t.status === 'in_progress') return `      ${c.accent('◐', { bold: true })} ${style(t.content, { bold: true, fg: 'text/primary' })}`;
+    return `      ${c.muted('☐')} ${c.muted(t.content)}`;
+  });
+  if (lines.length) out(`${lines.join('\n')}\n`);
 }
 
 // ── Línea del usuario (eco en modo no interactivo) ───────────────

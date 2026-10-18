@@ -41,6 +41,7 @@ export function createUI({ input = null, spinner = null } = {}) {
       ],
       footer: L('↑↓ elegir · enter confirmar · esc = no', '↑↓ move · enter select · esc = no'),
       erase: true,
+      tone: 'status/warning',
     });
     if (choice === 'yes' || choice === 'always') {
       setHeaderMark(mark);

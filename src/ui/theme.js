@@ -42,9 +42,14 @@ export function currentTheme() {
   return { id: state.id, ...state.theme };
 }
 
+const EN_NAMES = {
+  brasa: 'Ember (dark)', alba: 'Dawn (light)', medianoche: 'Midnight', daltonico: 'Color-blind',
+  'alto-contraste': 'High contrast', fosforo: 'Phosphor (retro)',
+};
+
 export function allThemes(customThemes = {}) {
   const out = {};
-  for (const [id, t] of Object.entries(BUILTIN_THEMES)) out[id] = t;
+  for (const [id, t] of Object.entries(BUILTIN_THEMES)) out[id] = { ...t, name: L(t.name, EN_NAMES[id] || t.name) };
   for (const [id, c] of Object.entries(customThemes || {})) out[id] = buildCustom(id, c);
   return out;
 }
