@@ -8,6 +8,8 @@ export function startMockLLM({ script = [], models = ['mock-coder:7b', 'mock-sma
   const queue = [...script];
   const api = { rejectGzip: false };
   const server = http.createServer(async (req, res) => {
+    // una conexión por petición: en Windows, reutilizar una conexión que otra prueba cortó da ECONNRESET
+    res.setHeader('Connection', 'close');
     const parts = [];
     for await (const ch of req) parts.push(ch);
     let buf = Buffer.concat(parts);
