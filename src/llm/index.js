@@ -6,6 +6,7 @@ import { L } from '../i18n.js';
 import { scanModels, resolveModelFile } from '../local/models.js';
 import { localEngine } from '../local/engine.js';
 import { wantsGzip } from './compress.js';
+import { samplingFor } from './sampling.js';
 
 export { LLMError };
 
@@ -23,6 +24,8 @@ function baseOpts(settings, provider, model) {
     // thinking: false apaga el razonamiento en modelos que lo permiten (Qwen3, DeepSeek-R1…). Solo en servidores
     // propios: las APIs en la nube rechazan parámetros desconocidos.
     thinking: provider.cloud ? undefined : (provider.thinking ?? settings.thinking),
+    // muestreo recomendado por familia (p. ej. Qwen3: temperatura 0.6, top_k 20, presence_penalty 1)
+    sampling: samplingFor(model, { ...settings, thinking: provider.thinking ?? settings.thinking }, provider),
   };
 }
 

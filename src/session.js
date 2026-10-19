@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { HOME } from './config.js';
 import { readJSON, writeJSON, randomId } from './util/fs.js';
+import { sanitizeHistory } from './agent/history.js';
 
 const DIR = () => path.join(HOME, 'sessions');
 
@@ -29,7 +30,13 @@ export class Session {
 
   static load(id) {
     const data = readJSON(path.join(DIR(), `${id}.json`));
-    return data ? new Session(data) : null;
+    if (!data) return null;
+    // sesiones rotas por una llamada con JSON inválido: se reparan al cargar (se conserva todo lo demás)
+    const { messages, fixed } = sanitizeHistory(data.messages || []);
+    const s = new Session({ ...data, messages });
+    s.repaired = fixed;
+    if (fixed) { try { s.save(); } catch { /* sin disco: se repara de nuevo la próxima vez */ } }
+    return s;
   }
 
   static list(cwd, limit = 20) {

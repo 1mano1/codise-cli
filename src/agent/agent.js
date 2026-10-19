@@ -4,6 +4,7 @@ import { toPromptMessages, parseTextToolCalls } from '../llm/textTools.js';
 import { toolSpec, validateArgs, parseToolArgs } from '../tools/index.js';
 import { buildSystemPrompt } from './prompt.js';
 import { estimateContext, summarize, keepFromIndex } from './compact.js';
+import { validArgs, sanitizeHistory, brokenNote } from './history.js';
 import { truncateMiddle, randomId, formatTokens } from '../util/fs.js';
 import { wildcardMatch } from '../util/glob.js';
 import * as ui from '../ui/output.js';
@@ -11,6 +12,17 @@ import { L } from '../i18n.js';
 import { liveActive } from '../ui/live.js';
 
 const MAX_DEPTH = 2;
+
+// Quita las llamadas del último mensaje del asistente que tenga herramientas (y sus resultados), dejando una nota.
+function dropLastToolCalls(messages) {
+  const i = messages.findLastIndex((m) => m.role === 'assistant' && m.tool_calls?.length);
+  if (i < 0) return;
+  const ids = new Set(messages[i].tool_calls.map((tc) => tc.id));
+  const m = { ...messages[i], content: [messages[i].content, ...messages[i].tool_calls.map((tc) => brokenNote(tc.function?.name))].filter(Boolean).join('\n') };
+  delete m.tool_calls;
+  messages[i] = m;
+  for (let j = messages.length - 1; j > i; j--) if (messages[j].role === 'tool' && ids.has(messages[j].tool_call_id)) messages.splice(j, 1);
+}
 
 // ¿El modelo está repitiendo lo mismo? (el final del texto ya apareció al menos 2 veces antes)
 export function repeatsItself(text, { window = 300, times = 3 } = {}) {
@@ -228,6 +240,7 @@ export class Agent {
     this.errorStreak = 0;
     this.nudges = 0;
     this.loopBreaks = 0;
+    this.brokenCalls = 0;
     this.toolCount = 0;
     this.view.beginTurn?.();
     while (turns < maxTurns) {
@@ -248,12 +261,34 @@ export class Agent {
         this.messages.push({ role: 'user', content: 'Your previous answer started repeating the same text over and over, so it was cut off. Stop deliberating: make a decision now and act (call the tool with your best attempt; it does not need to be perfect). Keep any reasoning very short.' });
         continue;
       }
+      // argumentos con JSON inválido (cortados por un bucle o por el límite de tokens): no se ejecutan ni se guardan
+      // tal cual, porque reenviarlos rompería todas las peticiones siguientes
+      const broken = res.toolCalls.filter((tc) => !validArgs(tc.arguments));
+      let brokenMsg = null;
+      if (broken.length) {
+        res.toolCalls = res.toolCalls.filter((tc) => validArgs(tc.arguments));
+        this.brokenCalls = (this.brokenCalls || 0) + 1;
+        const names = [...new Set(broken.map((tc) => tc.name))].join(', ');
+        if (this.brokenCalls > 3) {
+          const msg = L(`Detuve la tarea: el modelo envió varias veces llamadas a ${names} con argumentos cortados. Pídele algo más corto o divide la tarea.`, `I stopped the task: the model kept sending cut-off arguments to ${names}. Ask for something shorter or split the task.`);
+          this.view.notice(msg);
+          return { text: msg, turns, tools: this.toolCount, tokens: this.usage.input + this.usage.output, stuck: true };
+        }
+        this.view.notice(L(`La llamada a ${names} llegó cortada (JSON inválido): no la ejecuté y le pedí que la repita.`, `The call to ${names} arrived cut off (invalid JSON): I did not run it and asked the model to repeat it.`));
+        const cut = res.finish === 'length' ? ' Your answer hit the output token limit, so write less per call (split big files into several Edit/Write calls).' : '';
+        brokenMsg = `Your call to the tool ${names} had invalid JSON arguments (it was probably cut off).${cut} Repeat it with valid, shorter arguments.`;
+        res.content = [res.content, ...broken.map((tc) => brokenNote(tc.name))].filter(Boolean).join('\n');
+      }
       const assistant = { role: 'assistant', content: res.content || '' };
       if (res.toolCalls.length) {
         assistant.tool_calls = res.toolCalls.map((tc) => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.arguments || '{}' } }));
       }
       this.messages.push(assistant);
       finalText = res.content;
+      if (brokenMsg && !res.toolCalls.length) {
+        this.messages.push({ role: 'user', content: brokenMsg });
+        continue;
+      }
       if (res.parseErrors?.length && !res.toolCalls.length) {
         this.messages.push({ role: 'user', content: `Your <tool_call> block was not valid JSON (${res.parseErrors[0]}). Repeat the call with valid JSON: {"name": "...", "arguments": {...}}.` });
         continue;
@@ -284,6 +319,7 @@ export class Agent {
         throw e;
       }
       for (const r of results) this.messages.push({ role: 'tool', tool_call_id: r.id, name: r.name, content: r.content });
+      if (brokenMsg) this.messages.push({ role: 'user', content: brokenMsg });
       if (results.some((r) => r.userDenied) && !this.isSub) return { text: '', turns, tokens: this.usage.input + this.usage.output, stopped: true };
       if (this.loopHits >= 3) {
         const msg = L('Detuve la tarea: el modelo repetía las mismas acciones sin avanzar. Prueba con un modelo más grande o divide la tarea en pasos más pequeños.', 'I stopped the task: the model kept repeating the same actions without progress. Try a larger model or split the task into smaller steps.');
@@ -305,10 +341,16 @@ export class Agent {
     let mode = rt.toolModeFor(client.model);
     let transient = 0; // reintentos por fallos pasajeros (red, 429, 5xx, motor reiniciándose)
     let compacted = false;
+    let repairedOnError = false;
     for (let attempt = 0; attempt < 8; attempt++) {
+      // nunca reenviar una llamada con JSON inválido (rompe la conversación en servidores como llama-server)
+      const clean = sanitizeHistory(this.messages);
+      if (clean.fixed) this.messages.splice(0, this.messages.length, ...clean.messages);
       const specs = tools.map((t) => toolSpec(t, rt, { lean: rt.isLean() }));
       const system = buildSystemPrompt(rt, { agent: this, tools: specs, toolMode: mode, model: client.model });
       let messages = [{ role: 'system', content: system }, ...this.messages];
+      // límite de tokens por respuesta: evita que un bucle genere sin fin (y que la respuesta no quepa en el contexto)
+      const maxTokens = this.outputBudget(system);
       if (mode === 'prompt') messages = toPromptMessages(messages);
       const view = this.view;
       view.thinking();
@@ -332,6 +374,7 @@ export class Agent {
           messages,
           tools: mode === 'native' && specs.length ? specs : undefined,
           signal: loopCtl.signal,
+          maxTokens,
           onText: (t) => {
             streamed += t;
             feed(t);
@@ -347,7 +390,7 @@ export class Agent {
           onReasoning: (x) => { feed(x); view.reasoning(x); view.tokens(Math.max(1, Math.round(x.length / 4))); },
           onToolCall: (name, chunk) => {
             view.status?.(name ? L(`Preparando ${name}…`, `Preparing ${name}…`) : L('Preparando una herramienta…', 'Preparing a tool…'));
-            if (chunk) view.tokens(Math.max(1, Math.round(chunk.length / 4)));
+            if (chunk) { feed(chunk); view.tokens(Math.max(1, Math.round(chunk.length / 4))); }
           },
         });
         signal?.removeEventListener('abort', onUserAbort);
@@ -368,7 +411,7 @@ export class Agent {
           if (bare) { toolCalls = [bare]; content = ''; }
         }
         for (const tc of toolCalls) tc.id ||= `call_${randomId()}`;
-        return { content, toolCalls, parseErrors };
+        return { content, toolCalls, parseErrors, finish: r.finish };
       } catch (e) {
         signal?.removeEventListener('abort', onUserAbort);
         splitter.flush();
@@ -391,13 +434,25 @@ export class Agent {
           await this.compact({ signal });
           continue;
         }
+        // el servidor no pudo leer una llamada del historial (JSON inválido): reintentar igual fallaría siempre;
+        // se repara el historial y se reintenta una sola vez
+        if (/Failed to parse tool call|parse tool call arguments|invalid.*tool.*arguments/i.test(`${e.body || ''} ${e.message || ''}`)) {
+          if (repairedOnError) throw e;
+          repairedOnError = true;
+          const fix = sanitizeHistory(this.messages);
+          // si no había nada roto que quitar, se descarta la última llamada del asistente (la más probable)
+          if (!fix.fixed) dropLastToolCalls(fix.messages);
+          this.messages.splice(0, this.messages.length, ...fix.messages);
+          view.notice(L('El servidor no pudo leer una llamada a herramienta del historial: la reparé y reintento.', 'The server could not read a tool call in the history: I repaired it and am retrying.'));
+          continue;
+        }
         // fallos pasajeros: se espera y se reintenta, avisando
-        // si el servidor no existe (conexión rechazada) un solo reintento basta: más solo hace esperar
-        const maxRetries = /ECONNREFUSED|ENOTFOUND|EAI_AGAIN/.test(e?.message || '') ? 1 : 3;
+        // si el servidor no existe (conexión rechazada) un solo reintento basta; errores 500, máximo 2
+        const maxRetries = /ECONNREFUSED|ENOTFOUND|EAI_AGAIN/.test(e?.message || '') ? 1 : e?.status >= 500 ? 2 : 3;
         if (transient < maxRetries && isTransient(e)) {
           transient++;
           const wait = [1000, 3000, 8000][transient - 1];
-          view.notice(L(`Falló la conexión con el modelo (${shortError(e)}). Reintento ${transient}/3 en ${wait / 1000} s…`, `The model connection failed (${shortError(e)}). Retry ${transient}/3 in ${wait / 1000} s…`));
+          view.notice(L(`Falló la conexión con el modelo (${shortError(e)}). Reintento ${transient}/${maxRetries} en ${wait / 1000} s…`, `The model connection failed (${shortError(e)}). Retry ${transient}/${maxRetries} in ${wait / 1000} s…`));
           await sleepAbortable(wait, signal);
           if (signal?.aborted) throw abortError();
           continue;
@@ -495,6 +550,16 @@ export class Agent {
   }
 
   // ── Contexto ───────────────────────────────────────────────────
+  // Tokens máximos por respuesta: el configurado, o hasta 8192 sin pasarse del espacio libre del contexto.
+  // En la nube no se manda (cada API tiene su límite y algunas no aceptan max_tokens).
+  outputBudget(system) {
+    const set = Number(this.runtime.settings.maxOutputTokens) || 0;
+    if (set) return set;
+    if (this.runtime.providerInfo?.()?.cloud) return undefined;
+    const free = this.runtime.contextWindow() - estimateContext(system, this.messages) - 256;
+    return Math.max(512, Math.min(8192, free));
+  }
+
   contextUsage(tools = this.tools()) {
     const specs = tools.map((t) => toolSpec(t, this.runtime));
     const system = buildSystemPrompt(this.runtime, { agent: this, tools: specs, toolMode: 'prompt', model: this.model || this.runtime.settings.model });

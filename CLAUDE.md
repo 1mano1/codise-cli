@@ -451,3 +451,27 @@ Problemas reportados al probarla y solución:
   la petición, no se guarda el texto repetido y se le pide decidir (máx. 2 por turno; luego se detiene).
 - Mascotas: `normalizeMascot` corrige espacios, filas disparejas y bordes vacíos; `/mascot` muestra las que no
   cargan y por qué (`mascotErrors`).
+
+## Llamadas a herramientas cortadas (rama `fix/broken-tool-args`)
+
+Una tool_call con argumentos JSON inválidos (cortada por un bucle o por el límite de tokens) rompía la
+conversación: llama-server respondía 500 en cada petición que la incluyera y el CLI reintentaba a ciegas.
+
+- `src/agent/history.js`: `validArgs` (¿el argumento es un objeto JSON válido?) y `sanitizeHistory` (sustituye
+  cada llamada rota por una nota en el texto del asistente, quita sus resultados y los resultados huérfanos; no
+  pierde el resto del contexto). `brokenNote(name)` = la nota.
+- Antes de cada petición se sanea `this.messages`; una llamada con JSON inválido no se ejecuta ni se guarda tal
+  cual, y se le pide al modelo repetirla más corta (si fue por `finish_reason: length`, se le dice). Máx. 3 por turno.
+- Error 500 con "Failed to parse tool call arguments": no se reintenta igual; se repara el historial (o se quita
+  la última tool_call) y se reintenta una vez. Otros 500: máx. 2 reintentos.
+- `Session.load` repara la sesión al cargarla (y la reguarda): las sesiones ya rotas vuelven a funcionar; `/resume`
+  avisa cuántas reparó. Probado con una sesión real rota (Write de 11 KB cortado).
+- `outputBudget`: siempre se manda `max_tokens` en servidores propios (configurado o ≤ 8192 sin pasar del contexto).
+  `finish: length` + tool_calls → se validan como posiblemente cortadas.
+- Detector de bucles (`repeatsItself`) también sobre los argumentos en streaming.
+- `src/llm/sampling.js`: Qwen3/QwQ en servidores propios usan temp 0.6, top_p 0.95, top_k 20, presence_penalty 1
+  (0.7 sin pensamiento), que evita los bucles de las temperaturas bajas. `settings.sampling` lo reemplaza. En la
+  nube no se manda (top_k/min_p no siempre se aceptan).
+
+Sesión rota manualmente: `/resume` la repara; o empieza una nueva con `/exit` y reabrir, o borra el último mensaje
+con `/rewind`.

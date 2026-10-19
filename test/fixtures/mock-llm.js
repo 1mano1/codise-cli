@@ -29,7 +29,7 @@ export function startMockLLM({ script = [], models = ['mock-coder:7b', 'mock-sma
 
     const step = queue.shift() || { content: 'Listo.' };
     if (step.error) { res.writeHead(step.error.status); return res.end(step.error.body || 'error'); }
-    const calls = (step.toolCalls || []).map((t, i) => ({ id: `call_${i}`, name: t.name, args: t.args || {} }));
+    const calls = (step.toolCalls || []).map((t, i) => ({ id: `call_${i}`, name: t.name, args: t.args || {}, raw: t.raw }));
 
     if (req.url === '/api/chat') {
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
@@ -48,12 +48,12 @@ export function startMockLLM({ script = [], models = ['mock-coder:7b', 'mock-sma
       if (step.delay) await new Promise((r) => setTimeout(r, step.delay)); // streaming lento para probar la animación
     }
     calls.forEach((c, i) => {
-      const args = JSON.stringify(c.args);
+      const args = c.raw ?? JSON.stringify(c.args); // raw: argumentos tal cual (p. ej. JSON cortado)
       send({ choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: c.id, type: 'function', function: { name: c.name, arguments: '' } }] } }] });
       send({ choices: [{ index: 0, delta: { tool_calls: [{ index: i, function: { arguments: args.slice(0, Math.ceil(args.length / 2)) } }] } }] });
       send({ choices: [{ index: 0, delta: { tool_calls: [{ index: i, function: { arguments: args.slice(Math.ceil(args.length / 2)) } }] } }] });
     });
-    send({ choices: [{ index: 0, delta: {}, finish_reason: calls.length ? 'tool_calls' : 'stop' }] });
+    send({ choices: [{ index: 0, delta: {}, finish_reason: step.finish || (calls.length ? 'tool_calls' : 'stop') }] });
     send({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 20 } });
     res.end('data: [DONE]\n\n');
   });

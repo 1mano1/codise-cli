@@ -173,6 +173,67 @@ export async function e2eTests(t) {
       assert(m.requests.at(-1).body.chat_template_kwargs?.enable_thinking === false, 'enable_thinking: false en la petición');
     });
 
+    await t('llamadas cortadas: no se ejecutan, no llegan a la petición HTTP y las sesiones rotas se reparan', async (assert) => {
+      const proj = path.join(work, 'proyecto-cortado');
+      fs.mkdirSync(path.join(proj, '.git'), { recursive: true });
+      const BROKEN = '{"content": "123'; // JSON cortado (sin comilla ni llave de cierre)
+      const hasBroken = (req) => (req.body?.messages || []).some((x) => (x.tool_calls || []).some((tc) => tc.function?.arguments === BROKEN));
+      // 1) en vivo: la respuesta llega cortada por el límite de tokens
+      m.push(
+        { toolCalls: [{ name: 'Write', raw: BROKEN }], finish: 'length' },
+        { toolCalls: [{ name: 'Write', args: { file_path: 'ok.txt', content: '123' } }] },
+        { content: 'Listo.' },
+      );
+      let before = m.requests.length;
+      let r = await runCli(['--yolo', ...base, '-p', 'escribe ok.txt'], { cwd: proj, home });
+      let reqs = m.requests.slice(before);
+      assert(!reqs.some(hasBroken), 'la llamada cortada nunca se reenvía');
+      assert(fs.existsSync(path.join(proj, 'ok.txt')) && !fs.existsSync(path.join(proj, '123')), 'la cortada no se ejecutó; la repetida sí');
+      const nudge = reqs[1]?.body.messages.find((x) => x.role === 'user' && /invalid JSON arguments/.test(String(x.content)));
+      assert(nudge && /output token limit/.test(nudge.content), 'le pide repetirla más corta (y explica el límite de tokens)');
+      assert(/llegó cortada/.test(r.stdout + r.stderr), `avisa al usuario: ${r.stdout}${r.stderr}`);
+      assert(reqs.every((q) => typeof q.body.max_tokens === 'number' && q.body.max_tokens <= 8192), 'siempre manda max_tokens');
+      // 2) una sesión guardada con la llamada rota: al retomarla se repara y se conserva el resto
+      const sessDir = path.join(home, 'sessions');
+      fs.mkdirSync(sessDir, { recursive: true });
+      const id = '2026-01-01-rota01';
+      fs.writeFileSync(path.join(sessDir, `${id}.json`), JSON.stringify({ id, cwd: proj, created: Date.now(), title: 'sesión rota', messages: [
+        { role: 'user', content: 'crea el archivo de la tarea importante' },
+        { role: 'assistant', content: 'Voy a escribirlo.', tool_calls: [{ id: 'call_x', type: 'function', function: { name: 'Write', arguments: BROKEN } }] },
+        { role: 'tool', tool_call_id: 'call_x', name: 'Write', content: 'Error: invalid JSON' },
+        { role: 'user', content: 'sigue' },
+      ] }));
+      m.push({ content: 'Retomado sin errores.' });
+      before = m.requests.length;
+      r = await runCli([...base, '--resume', id, '-p', 'continúa'], { cwd: proj, home });
+      reqs = m.requests.slice(before);
+      assert(r.stdout.includes('Retomado sin errores.') && !reqs.some(hasBroken), `la sesión rota funciona otra vez: ${r.stdout}${r.stderr}`);
+      const msgs = reqs[0]?.body.messages || [];
+      assert(msgs.some((x) => String(x.content).includes('tarea importante')) && msgs.some((x) => /tool call Write omitted/.test(String(x.content))), 'conserva el contexto y deja una nota');
+      assert(!msgs.some((x) => x.role === 'tool' && x.tool_call_id === 'call_x'), 'quita el resultado de la llamada rota');
+      const saved = JSON.parse(fs.readFileSync(path.join(sessDir, `${id}.json`), 'utf8'));
+      assert(!JSON.stringify(saved).includes('"arguments":"{\\"content\\": \\"123"'), 'la sesión reparada quedó guardada en disco');
+      // 3) el servidor responde 500 "Failed to parse tool call arguments": se repara y se reintenta una vez
+      m.push({ error: { status: 500, body: '{"error":{"message":"Failed to parse tool call arguments as JSON: missing closing quote"}}' } }, { content: 'Recuperado.' });
+      r = await runCli([...base, '-p', 'hola'], { cwd: proj, home });
+      assert(r.stdout.includes('Recuperado.') && /no pudo leer una llamada/.test(r.stdout + r.stderr), `repara y reintenta una vez: ${r.stdout}${r.stderr}`);
+    });
+
+    await t('muestreo: Qwen3 en servidores propios usa los valores recomendados (no temperatura baja)', async (assert) => {
+      const { samplingFor } = await import('../src/llm/sampling.js');
+      const q = samplingFor('qwen3.6-35b-a3b', {}, {});
+      assert(q.temperature === 0.6 && q.top_p === 0.95 && q.top_k === 20 && q.presence_penalty >= 1, 'Qwen3 con pensamiento');
+      assert(samplingFor('qwen3-coder:30b', { thinking: false }, {}).temperature === 0.7, 'Qwen3 sin pensamiento');
+      assert(samplingFor('qwen3b-int4', {}, {}) === null && samplingFor('llama3.1:8b', {}, {}) === null, 'otros modelos sin cambios');
+      assert(samplingFor('qwen3.6-35b', {}, { cloud: true }) === null, 'en la nube no');
+      assert(samplingFor('x', { sampling: { temperature: 0.9 } }, {}).temperature === 0.9, 'settings.sampling manda');
+      const { OpenAIClient } = await import('../src/llm/openai.js');
+      m.push({ content: 'ok' });
+      await new OpenAIClient({ baseUrl: `${m.url}/v1`, model: 'qwen3.6-35b-a3b', temperature: 0.2, sampling: q }).chat({ messages: [{ role: 'user', content: 'x' }] });
+      const b = m.requests.at(-1).body;
+      assert(b.temperature === 0.6 && b.top_k === 20 && b.top_p === 0.95 && b.presence_penalty === 1, `petición con el muestreo: ${JSON.stringify({ t: b.temperature, k: b.top_k })}`);
+    });
+
     await t('compactación: /compact, respaldo sin modelo y automática al llenarse', async (assert) => {
       // manual: el resumen sustituye la conversación y conserva las tareas y archivos
       m.push({ content: 'Primera respuesta.' }, { content: '1. Primary request: probar la compactación.' }, { content: 'Sigo.' });
@@ -389,7 +450,7 @@ export async function e2eTests(t) {
       m.push({ error: { status: 503, body: 'overloaded' } }, { content: 'Respondí al segundo intento.' });
       const r = await runCli(['-p', 'hola', ...base], opts);
       assert(r.status === 0 && r.stdout.includes('Respondí al segundo intento.'), `salida: ${r.stdout} ${r.stderr}`);
-      assert(/Reintento 1\/3/.test(r.stderr), 'avisa del reintento');
+      assert(/Reintento 1\/[23]/.test(r.stderr), 'avisa del reintento');
     });
 
     await t('recuperación: un error de herramienta llega con la indicación de investigar y seguir', async (assert) => {

@@ -10,9 +10,10 @@ function safeParse(s) {
 }
 
 export class OllamaClient {
-  constructor({ baseUrl, model, temperature = 0.2, contextWindow = 16384, maxTokens = 0, headers = {}, apiKey, label = 'Ollama', gzip = false, thinking }) {
+  constructor({ baseUrl, model, temperature = 0.2, contextWindow = 16384, maxTokens = 0, headers = {}, apiKey, label = 'Ollama', gzip = false, thinking, sampling = null }) {
     this.gzip = gzip;
     this.thinking = thinking;
+    this.sampling = sampling;
     this.baseUrl = baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
     this.model = model;
     this.temperature = temperature;
@@ -58,7 +59,7 @@ export class OllamaClient {
   }
 
   async chat({ messages, tools, signal, onText, onReasoning, maxTokens }) {
-    const options = { temperature: this.temperature, num_ctx: this.contextWindow };
+    const options = { temperature: this.temperature, num_ctx: this.contextWindow, ...(this.sampling || {}) };
     const mt = maxTokens || this.maxTokens;
     if (mt) options.num_predict = mt;
     const body = { model: this.model, messages: this.toOllama(messages), stream: true, options };
