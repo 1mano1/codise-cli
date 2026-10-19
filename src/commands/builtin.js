@@ -350,11 +350,9 @@ export const BUILTIN_COMMANDS = {
     get description() { return L('Resume la conversación para liberar contexto', 'Summarize the conversation to free context'); },
     argumentHint: '[instructions]',
     async run(args, { repl }) {
-      const before = repl.agent.contextUsage().used;
       try {
         const s = await repl.agent.compact({ instructions: args });
         if (!s) return ui.hint(L('No hay suficiente conversación para compactar.', 'Not enough conversation to compact.'));
-        ui.success(`${L('Conversación compactada', 'Conversation compacted')}: ${formatTokens(before)} → ${formatTokens(repl.agent.contextUsage().used)} tokens.`);
         repl.session.save();
       } catch (e) { repl.showError(e); }
     },

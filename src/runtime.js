@@ -221,7 +221,10 @@ export class Runtime {
     if (agent) {
       try {
         const u = agent.contextUsage();
-        parts.push(`ctx ${Math.min(100, Math.round((u.used / u.max) * 100))} %`);
+        const pct = Math.min(100, Math.round((u.used / u.max) * 100));
+        const auto = Math.round((Number(this.settings.autoCompact) || 0) * 100);
+        // aviso como en Claude Code: cuánto falta para compactar automáticamente
+        parts.push(auto && pct >= auto - 15 ? L(`${Math.max(0, auto - pct)} % para autocompactar`, `${Math.max(0, auto - pct)}% until auto-compact`) : `ctx ${pct} %`);
       } catch { /* sin estimación */ }
     }
     if (this.offline) parts.push('offline');

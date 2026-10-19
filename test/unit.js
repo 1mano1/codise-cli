@@ -294,6 +294,17 @@ export async function unitTests(t) {
     assert(out.pluginHooks(plugins[0]).PostToolUse?.[0]?.pluginRoot, 'hooks con raíz del plugin');
   });
 
+  await t('compactación: la transcripción respeta el presupuesto', async (assert) => {
+    const { transcript, keepFromIndex } = await import('../src/agent/compact.js');
+    const msgs = [{ role: 'user', content: 'objetivo inicial' }];
+    for (let i = 0; i < 50; i++) msgs.push({ role: 'assistant', content: `paso ${i} ${'x'.repeat(400)}` }, { role: 'user', content: `pedido ${i}` });
+    const full = transcript(msgs);
+    const small = transcript(msgs, 1000);
+    assert(full.length > small.length * 3, 'recorta');
+    assert(small.startsWith('[user]\nobjetivo inicial') && small.includes('pedido 49') && /older messages omitted/.test(small), 'conserva el inicio y lo reciente');
+    assert(keepFromIndex(msgs) === msgs.length - 1, 'último pedido');
+  });
+
   await t('usage: costo estimado, histórico, límites y uso desde la cola', async (assert) => {
     const U = await import('../src/usage.js');
     const cost = U.estimateCost({ m1: { input: 3, output: 15, cached: 0.3 } }, 'p', 'm1', { input: 1e6, cached: 5e5, output: 1e5 });
