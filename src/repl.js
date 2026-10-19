@@ -18,6 +18,7 @@ import { resolvePath, relPath, truncateMiddle, isBinaryBuffer, formatDuration } 
 import { LLMError } from './llm/index.js';
 import { L } from './i18n.js';
 import { runOnboarding } from './onboarding.js';
+import { logActivity, summarizeTurn, readActivity } from './activity.js';
 
 // Adjunta archivos mencionados con @ruta.
 export function expandMentions(text, cwd) {
@@ -126,6 +127,7 @@ class Repl {
       provider: rt.providerInfo()?.label || rt.settings.provider,
       cwd: rt.cwd,
       memory: rt.memory.map((m) => m.name),
+      activity: rt.recentActivity?.length || 0,
       mascot: rt.mascot(),
     });
     const failed = rt.mcp.status().filter((x) => x.status !== 'conectado');
@@ -224,17 +226,30 @@ class Repl {
     let content = withFiles;
     if (this.pendingContext) { content = `${this.pendingContext.trim()}\n\n${content}`; this.pendingContext = ''; }
     if (hook.context) content += `\n\n<hook-context>\n${hook.context}\n</hook-context>`;
-    rt.checkpoints.beginTurn(this.agent.messages.length, text);
+    const turnStart = this.agent.messages.length;
+    rt.checkpoints.beginTurn(turnStart, text);
     this.controller = new AbortController();
     this.input.setBusy(true);
     const t0 = Date.now();
+    let turnError = null;
     try {
       await this.agent.run(content, { signal: this.controller.signal });
     } catch (e) {
       rt.spinner.stop();
+      turnError = e.name === 'AbortError' ? 'interrupted by the user' : e.message;
       if (e.name === 'AbortError') ui.hint(L('Interrumpido. ¿Qué hago ahora?', 'Interrupted. What should I do instead?'));
       else this.showError(e);
     } finally {
+      // memoria entre sesiones: registro automático del turno (sin usar el modelo)
+      logActivity(rt.projectRoot, summarizeTurn({
+        prompt: display || text,
+        messages: this.agent.messages.slice(turnStart),
+        files: [...(rt.checkpoints.turns.at(-1)?.files.keys() || [])],
+        error: turnError,
+        session: this.session.id,
+        model: rt.settings.model,
+        cwd: rt.cwd,
+      }));
       rt.spinner.stop();
       this.input.setBusy(false);
       this.controller = null;
@@ -274,6 +289,7 @@ class Repl {
     this.session.save();
     this.session = new Session({ cwd: this.runtime.cwd, model: this.runtime.settings.model });
     this.runtime.sessionId = this.session.id;
+    this.runtime.recentActivity = readActivity(this.runtime.projectRoot, { limit: 10, excludeSession: this.session.id });
     this.agent = new Agent(this.runtime, { messages: this.session.messages });
     this.runtime.todos = [];
     this.runtime.checkpoints = new (this.runtime.checkpoints.constructor)();
@@ -284,6 +300,7 @@ class Repl {
     if (!s) return ui.warn(L('No encontré esa conversación.', 'Conversation not found.'));
     this.session = s;
     this.runtime.sessionId = s.id;
+    this.runtime.recentActivity = readActivity(this.runtime.projectRoot, { limit: 10, excludeSession: s.id });
     this.agent = new Agent(this.runtime, { messages: s.messages });
     ui.success(L(`Conversación retomada: ${s.title || s.id} (${s.messages.length} mensajes)`, `Conversation resumed: ${s.title || s.id} (${s.messages.length} messages)`));
   }
@@ -328,6 +345,8 @@ export async function startRepl(runtime, { session, initialPrompt = null } = {})
   runtime.ui = createUI({ input, spinner: runtime.spinner });
   repl = new Repl(runtime, input, session);
   runtime.sessionId = session.id;
+  // memoria entre sesiones: lo último que se hizo en este proyecto en otras sesiones
+  runtime.recentActivity = readActivity(runtime.projectRoot, { limit: 10, excludeSession: session.id });
   const start = await runtime.hook('SessionStart', { source: session.messages.length ? 'resume' : 'startup' });
   if (start.context) repl.pendingContext += `\n<session-context>\n${start.context}\n</session-context>`;
   await repl.welcome();

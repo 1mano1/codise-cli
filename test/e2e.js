@@ -179,6 +179,45 @@ export async function e2eTests(t) {
       assert(r.status === 0 && r.stdout.includes('Respuesta sin stdin.'), `estado ${r.status}: ${r.stdout}`);
     });
 
+    await t('memoria entre sesiones: la actividad anterior llega a la sesión nueva', async (assert) => {
+      m.push(
+        { toolCalls: [{ name: 'Write', args: { file_path: 'utils.js', content: 'export const suma = (a, b) => a + b;\n' } }] },
+        { content: 'Creé utils.js con la función suma.' },
+      );
+      await runCli(['-p', 'crea utils.js con una función suma', '--yolo', ...base], opts);
+      m.push({ content: 'Antes creamos utils.js.' });
+      await runCli(['-p', '¿qué hicimos antes?', ...base], opts);
+      const sys = m.requests.at(-1).body.messages[0].content;
+      assert(sys.includes('Recent activity in this project'), 'sección de actividad reciente');
+      assert(sys.includes('crea utils.js con una función suma') && sys.includes('files changed: utils.js'), `pedido y archivo anteriores: ${sys.slice(-500)}`);
+    });
+
+    await t('Remember: el agente guarda una nota en CODICE.md y la siguiente sesión la conoce', async (assert) => {
+      m.push(
+        { toolCalls: [{ name: 'Remember', args: { note: 'Las pruebas se ejecutan con npm test' } }] },
+        { content: 'Anotado.' },
+      );
+      await runCli(['-p', 'recuerda cómo se prueban', ...base], opts);
+      assert(fs.readFileSync(path.join(cwd, 'CODICE.md'), 'utf8').includes('- Las pruebas se ejecutan con npm test'), 'nota en CODICE.md');
+      m.push({ content: 'ok' });
+      await runCli(['-p', 'hola', ...base], opts);
+      assert(m.requests.at(-1).body.messages[0].content.includes('Las pruebas se ejecutan con npm test'), 'la nota llega al modelo');
+    });
+
+    await t('recuperación: reintenta fallos pasajeros del modelo', async (assert) => {
+      m.push({ error: { status: 503, body: 'overloaded' } }, { content: 'Respondí al segundo intento.' });
+      const r = await runCli(['-p', 'hola', ...base], opts);
+      assert(r.status === 0 && r.stdout.includes('Respondí al segundo intento.'), `salida: ${r.stdout} ${r.stderr}`);
+      assert(/Reintento 1\/3/.test(r.stderr), 'avisa del reintento');
+    });
+
+    await t('recuperación: un error de herramienta llega con la indicación de investigar y seguir', async (assert) => {
+      m.push({ toolCalls: [{ name: 'Read', args: { file_path: 'no-existe.js' } }] }, { content: 'El archivo no existe; lo creo.' });
+      await runCli(['-p', 'lee no-existe.js', ...base], opts);
+      const toolMsg = m.requests.at(-1).body.messages.at(-1);
+      assert(toolMsg.role === 'tool' && toolMsg.content.includes('Find the cause'), `resultado: ${toolMsg.content}`);
+    });
+
     await t('error de conexión con mensaje accionable', async (assert) => {
       const r = await runCli(['-p', 'hola', '--base-url', 'http://127.0.0.1:9/v1', '--model', 'x'], opts);
       assert(r.status === 1, `código ${r.status}`);

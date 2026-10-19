@@ -315,19 +315,26 @@ export const BUILTIN_COMMANDS = {
 
   memory: {
     get description() { return L('Memoria del proyecto (CODICE.md): ver, add, edit', 'Project memory (CODICE.md): view, add, edit'); },
-    argumentHint: '[add <text> | edit]',
+    argumentHint: '[add <text> | edit | clear-activity]',
     async run(args, { runtime }) {
       const [sub, ...rest] = args.trim().split(/\s+/);
+      const { readActivity, clearActivity } = await import('../activity.js');
       if (sub === 'add' && rest.length) { const f = addMemory(runtime.projectRoot, rest.join(' ')); runtime.reload(); return ui.success(`${L('Guardado en', 'Saved to')} ${relPath(f, runtime.cwd)}`); }
       if (sub === 'edit') {
         const f = path.join(runtime.projectRoot, 'CODICE.md');
         if (!fs.existsSync(f)) fs.writeFileSync(f, `# ${L('Memoria del proyecto', 'Project memory')}\n\n`);
         return openInEditor(f);
       }
+      if (sub === 'clear-activity') { clearActivity(runtime.projectRoot); runtime.recentActivity = []; return ui.success(L('Actividad reciente borrada.', 'Recent activity cleared.')); }
       const files = memoryFiles(runtime.cwd, runtime.projectRoot, { compat: runtime.settings.compat?.claude !== false });
-      if (!files.length) return ui.hint(L('Sin memoria todavía. Usa /init para crear CODICE.md o escribe "# nota" para guardar algo.', 'No memory yet. Use /init to create CODICE.md or type "# note" to save something.'));
+      ui.println(c.accent(L('Archivos de contexto', 'Context files'), { bold: true }));
+      if (!files.length) ui.hint(L('  Ninguno todavía. Usa /init para crear CODICE.md o escribe "# nota".', '  None yet. Use /init to create CODICE.md or type "# note".'));
       for (const f of files) ui.println(`  ${c.success('●')} ${c.info(f.file)} ${c.dim(`· ${f.agent} · ${f.scope === 'usuario' ? L('usuario', 'user') : L('proyecto', 'project')}`)}`);
-      ui.hint(L('Códice también lee los archivos de contexto de Claude Code, Codex, Gemini, Qwen, Copilot, Cursor, Windsurf, Cline y Aider.', 'Códice also reads the context files of Claude Code, Codex, Gemini, Qwen, Copilot, Cursor, Windsurf, Cline and Aider.'));
+      const act = readActivity(runtime.projectRoot, { limit: 8 });
+      ui.println(c.accent(L('Actividad reciente (memoria entre sesiones)', 'Recent activity (cross-session memory)'), { bold: true }));
+      if (!act.length) ui.hint(L('  Todavía no hay actividad registrada en este proyecto.', '  No activity recorded in this project yet.'));
+      for (const e of act) ui.println(`  ${c.dim(new Date(e.time).toLocaleString())}  ${c.primary(e.prompt)}${e.files?.length ? c.muted(`  · ${e.files.slice(0, 3).join(', ')}`) : ''}${e.error ? c.error('  · error') : ''}`);
+      ui.hint(L('Códice también lee los archivos de contexto de Claude Code, Codex, Gemini, Qwen, Copilot, Cursor, Windsurf, Cline y Aider. /memory clear-activity borra la actividad.', 'Códice also reads the context files of Claude Code, Codex, Gemini, Qwen, Copilot, Cursor, Windsurf, Cline and Aider. /memory clear-activity clears the activity.'));
     },
   },
 

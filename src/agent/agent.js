@@ -76,6 +76,32 @@ export function subView(runtime, label) {
   };
 }
 
+// Se añade a cada resultado de herramienta con error: investigar la causa, corregir y seguir.
+const RECOVERY_HINT = '\n\n[This failed. Find the cause (read the error and the relevant file or output), fix it and continue with the task. Try a different approach if the same thing failed before.]';
+
+// ── Recuperación de errores del modelo ───────────────────────────
+function isTransient(e) {
+  if (e?.engine === 'NO_ENGINE') return false;
+  if (e?.network || e?.engine === 'LOAD_FAILED') return true;
+  if ([408, 409, 425, 429, 500, 502, 503, 504, 529].includes(e?.status)) return true;
+  return /terminated|ECONNRESET|socket hang up|ETIMEDOUT|EPIPE|fetch failed|other side closed|overloaded/i.test(e?.message || '');
+}
+
+function isContextOverflow(e) {
+  return e?.status === 400 && /context|too long|maximum.*tokens|exceed|n_ctx|prompt is too/i.test(`${e.body || ''} ${e.message || ''}`);
+}
+
+function shortError(e) {
+  return String(e?.status ? `HTTP ${e.status}` : e?.message || 'error').split('\n')[0].slice(0, 60);
+}
+
+function sleepAbortable(ms, signal) {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+  });
+}
+
 // Algunos modelos locales escriben la llamada como JSON suelto en vez de usar tool_calls.
 function bareJsonCall(content, tools) {
   const t = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
@@ -187,7 +213,9 @@ export class Agent {
     const rt = this.runtime;
     const client = this.client();
     let mode = rt.toolModeFor(client.model);
-    for (let attempt = 0; attempt < 2; attempt++) {
+    let transient = 0; // reintentos por fallos pasajeros (red, 429, 5xx, motor reiniciándose)
+    let compacted = false;
+    for (let attempt = 0; attempt < 8; attempt++) {
       const specs = tools.map((t) => toolSpec(t, rt, { lean: rt.isLean() }));
       const system = buildSystemPrompt(rt, { agent: this, tools: specs, toolMode: mode, model: client.model });
       let messages = [{ role: 'system', content: system }, ...this.messages];
@@ -234,6 +262,24 @@ export class Agent {
           rt.setToolMode(client.model, 'prompt');
           mode = 'prompt';
           view.notice(L(`${client.model} no soporta herramientas nativas: uso el modo prompt (<tool_call>).`, `${client.model} does not support native tools: using prompt mode (<tool_call>).`));
+          continue;
+        }
+        // la conversación no cabe en el contexto del modelo: se resume y se reintenta (una vez)
+        if (!compacted && isContextOverflow(e) && this.messages.length > 2) {
+          compacted = true;
+          view.notice(L('La conversación no cabía en el contexto del modelo: la resumo y continúo.', 'The conversation did not fit the model context: summarizing and continuing.'));
+          await this.compact({ signal });
+          continue;
+        }
+        // fallos pasajeros: se espera y se reintenta, avisando
+        // si el servidor no existe (conexión rechazada) un solo reintento basta: más solo hace esperar
+        const maxRetries = /ECONNREFUSED|ENOTFOUND|EAI_AGAIN/.test(e?.message || '') ? 1 : 3;
+        if (transient < maxRetries && isTransient(e)) {
+          transient++;
+          const wait = [1000, 3000, 8000][transient - 1];
+          view.notice(L(`Falló la conexión con el modelo (${shortError(e)}). Reintento ${transient}/3 en ${wait / 1000} s…`, `The model connection failed (${shortError(e)}). Retry ${transient}/3 in ${wait / 1000} s…`));
+          await sleepAbortable(wait, signal);
+          if (signal?.aborted) throw abortError();
           continue;
         }
         throw e;
@@ -316,6 +362,7 @@ export class Agent {
       for (const f of deferred) f();
       rt.lastToolOutput = { name: tool.name, content: String(r.content ?? '') };
       if (tool.edits && !r.isError) this.mutations = (this.mutations || 0) + 1;
+      if (r.isError) content += RECOVERY_HINT;
       return { ...base, content: content || '(no output)', isError: Boolean(r.isError) };
     } catch (e) {
       if (e.name === 'AbortError' || signal?.aborted) {
@@ -323,7 +370,7 @@ export class Agent {
         throw abortError();
       }
       this.view.toolEnd(tool.name, summary, { ok: false, text: e.message });
-      return { ...base, content: `Error: ${e.message}`, isError: true };
+      return { ...base, content: `Error: ${e.message}${RECOVERY_HINT}`, isError: true };
     }
   }
 

@@ -89,6 +89,26 @@ export const Skill = {
   },
 };
 
+export const Remember = {
+  name: 'Remember',
+  readOnly: true, // escribe solo en la memoria del proyecto (CODICE.md), no en el código
+  description: 'Save a durable fact about this project or the user to the project memory (CODICE.md), so future sessions know it. Use for build/test commands, conventions, important decisions and user preferences. Do NOT save temporary task details.',
+  parameters: {
+    type: 'object',
+    properties: { note: { type: 'string', description: 'One short sentence' } },
+    required: ['note'],
+  },
+  summary: (a) => `"${String(a.note).slice(0, 70)}"`,
+  async run(a, ctx) {
+    const { rememberNote, loadMemory } = await import('../memory.js');
+    const r = rememberNote(ctx.runtime.projectRoot, a.note);
+    ctx.runtime.memory = loadMemory(ctx.runtime.cwd, ctx.runtime.projectRoot, { compat: ctx.runtime.settings.compat?.claude !== false });
+    return r.duplicate
+      ? { content: 'That note was already saved.', display: L('Ya estaba guardado', 'Already saved') }
+      : { content: `Saved to ${r.file}.`, display: L('Guardado en CODICE.md', 'Saved to CODICE.md') };
+  },
+};
+
 export const AskUser = {
   name: 'AskUser',
   readOnly: true,

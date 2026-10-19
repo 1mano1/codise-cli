@@ -99,3 +99,15 @@ export function addMemory(projectRoot, text, scope = 'proyecto') {
   fs.appendFileSync(file, `${prefix}- ${text.trim()}\n`);
   return file;
 }
+
+// Nota duradera escrita por el propio agente (herramienta Remember): va a la sección "Notas" de CODICE.md.
+export function rememberNote(projectRoot, note) {
+  const file = projectMemoryFile(projectRoot);
+  const text = String(note).replace(/\s+/g, ' ').trim();
+  let content = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '# Memoria del proyecto\n';
+  if (content.includes(`- ${text}`)) return { file, duplicate: true };
+  if (!/^## Notas\b/m.test(content)) content = `${content.replace(/\s*$/, '')}\n\n## Notas\n`;
+  content = `${content.replace(/\s*$/, '')}\n- ${text}\n`;
+  fs.writeFileSync(file, content);
+  return { file, duplicate: false };
+}

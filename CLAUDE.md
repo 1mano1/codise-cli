@@ -318,3 +318,16 @@ Problemas reportados al probarla y solución:
   por petición en vez de ~2,500. La barra ya no muestra el total acumulado (engañoso); `/cost` lo explica e
   incluye los tokens de caché.
 - Diff de archivos nuevos: las líneas vacías ya salen con número y `+`.
+
+## Memoria entre sesiones y recuperación de errores (rama `feat/session-memory`)
+
+- Dentro de una sesión el modelo ya recibe toda la conversación (y se compacta si se llena).
+- **Entre sesiones**: `src/activity.js` registra cada turno sin usar el modelo (pedido, archivos cambiados,
+  herramientas, resultado, error) en `~/.codice/projects/<proyecto>/activity.jsonl`. Al iniciar, las últimas 10
+  entradas de otras sesiones van al prompt ("Recent activity in this project"). `/memory` las muestra;
+  `/memory clear-activity` las borra.
+- Herramienta **`Remember`**: el agente anota hechos duraderos en la sección "## Notas" de `CODICE.md`.
+- La bienvenida muestra qué contexto leyó ("memoria · CODICE.md · N actividades recientes" o sugiere `/init`).
+- **Recuperación**: reintentos automáticos ante fallos pasajeros del modelo (red, 429/5xx, motor reiniciando;
+  1 s / 3 s / 8 s, uno solo si la conexión es rechazada); si el contexto se desborda, compacta y reintenta;
+  cada error de herramienta llega con la indicación de investigar la causa, corregir y seguir; regla en el prompt.
