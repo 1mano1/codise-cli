@@ -455,6 +455,17 @@ export async function unitTests(t) {
     } finally { srv.close(); }
   });
 
+  await t('Bash (Windows): el PATH se refresca con el registro y carpetas comunes', async (assert) => {
+    if (process.platform !== 'win32') return; // solo aplica en Windows
+    const { freshWindowsPath } = await import('../src/tools/bash.js');
+    const p = freshWindowsPath();
+    const low = p.toLowerCase();
+    assert(p.split(';').length > 5 && low.includes('system32'), 'arma un PATH con el sistema');
+    assert(!/;;/.test(p) && new Set(low.split(';')).size === p.split(';').length, 'sin duplicados ni vacíos');
+    // la segunda llamada usa caché (misma cadena)
+    assert(freshWindowsPath() === p, 'cacheado');
+  });
+
   await t('Bash: detecta un programa que falta y dice cómo instalarlo, sin rodeos', async (assert) => {
     const { missingProgram, installHint, Bash } = await import('../src/tools/bash.js');
     assert(missingProgram('bash: line 1: 7z: command not found') === '7z', 'command not found de bash');
