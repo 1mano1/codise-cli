@@ -353,6 +353,18 @@ export async function unitTests(t) {
     assert(found.length === 1 && found[0].endsWith(path.join('pez', 'mascot.json')), `encuentra el archivo (sin node_modules): ${found}`);
   });
 
+  await t('ciclos y mascotas: detecta texto repetido; corrige filas disparejas', async (assert) => {
+    const { repeatsItself } = await import('../src/agent/agent.js');
+    const block = 'Let me think about a fish shape:\n```\nbbbbbbbbbb\nbbbyyyyybb\nbbbyyyyybb\n```\nThat is still just a rectangle. Let me think more carefully about the body, tail and fins.\n';
+    assert(repeatsItself(`Intro distinta. ${block.repeat(8)}`), "bloque repetido 8 veces");
+    assert(!repeatsItself(`Intro distinta. ${block.repeat(2)}`), "dos veces todavía no es ciclo");
+    assert(!repeatsItself(`${block}${'Texto nuevo y distinto en cada línea número '}${Array.from({ length: 60 }, (_, i) => `línea ${i} con contenido único ${i * 7}`).join('\n')}`), 'texto normal sin repetición');
+    assert(!repeatsItself('='.repeat(2000)), 'relleno trivial no cuenta');
+    const { normalizeMascot, validateMascot } = await import('../src/ui/mascot.js');
+    const n = normalizeMascot({ palette: { b: '#00f' }, pixels: ['    bb', '   bbbb', '', '  bb'] });
+    assert(!validateMascot(n) && n.pixels.join('|') === '..bb.|.bbbb|.....|bb...', `normalizada: ${n.pixels.join('|')}`);
+  });
+
   await t('compactación: la transcripción respeta el presupuesto', async (assert) => {
     const { transcript, keepFromIndex } = await import('../src/agent/compact.js');
     const msgs = [{ role: 'user', content: 'objetivo inicial' }];

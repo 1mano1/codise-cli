@@ -153,6 +153,26 @@ export async function e2eTests(t) {
       } finally { m.requireKey = null; }
     });
 
+    await t('pensamiento: oculto por defecto, se corta si se cicla y se puede apagar', async (assert) => {
+      const block = 'Let me think about a fish shape again. A fish has a body, a tail and fins. bbbbbbbbbb bbbyyyyybb bbbyyyyybb. That is still a rectangle, let me think more carefully.\n';
+      m.push(
+        { reasoning: 'Pienso que el usuario quiere un saludo. Responderé breve.', content: 'Hola, ¿qué tal?' },
+        { reasoning: `Primero analizo. ${block.repeat(12)}` },
+        { content: 'Decidí y terminé.' },
+      );
+      const r = await runCli([...base], { cwd, home, input: 'hola\ndiseña algo\n/exit\n', timeout: 60000 });
+      assert(r.stdout.includes('Hola, ¿qué tal?') && !r.stdout.includes('Pienso que el usuario'), 'el pensamiento no se imprime por defecto');
+      assert(/se estaba repitiendo/.test(r.stdout) && r.stdout.includes('Decidí y terminé.'), `detecta el ciclo y continúa: ${r.stdout.slice(-600)}`);
+      const last = m.requests.at(-1).body.messages;
+      assert(last.some((x) => x.role === 'user' && /repeating the same text/.test(String(x.content))), 'le pide decidir');
+      assert(!last.some((x) => String(x.content).includes('let me think more carefully')), 'el texto repetido no se guarda en el contexto');
+      // thinking: false → se pide al servidor apagar el razonamiento (solo servidores propios)
+      const { OpenAIClient } = await import('../src/llm/openai.js');
+      m.push({ content: 'ok' });
+      await new OpenAIClient({ baseUrl: `${m.url}/v1`, model: 'mock-coder:7b', thinking: false }).chat({ messages: [{ role: 'user', content: 'x' }] });
+      assert(m.requests.at(-1).body.chat_template_kwargs?.enable_thinking === false, 'enable_thinking: false en la petición');
+    });
+
     await t('compactación: /compact, respaldo sin modelo y automática al llenarse', async (assert) => {
       // manual: el resumen sustituye la conversación y conserva las tareas y archivos
       m.push({ content: 'Primera respuesta.' }, { content: '1. Primary request: probar la compactación.' }, { content: 'Sigo.' });

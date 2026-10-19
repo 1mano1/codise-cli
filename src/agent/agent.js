@@ -12,6 +12,16 @@ import { liveActive } from '../ui/live.js';
 
 const MAX_DEPTH = 2;
 
+// ¿El modelo está repitiendo lo mismo? (el final del texto ya apareció al menos 2 veces antes)
+export function repeatsItself(text, { window = 300, times = 3 } = {}) {
+  if (text.length < window * times) return false;
+  const tail = text.slice(-window);
+  if (!tail.trim() || new Set(tail.replace(/\s/g, '')).size < 4) return false; // relleno trivial (espacios, ===)
+  let count = 0, i = 0;
+  while ((i = text.indexOf(tail, i)) >= 0) { count++; i += window; }
+  return count >= times;
+}
+
 // ¿El texto termina anunciando una acción que no hizo? (no cuenta si termina con una pregunta)
 export function announcesAction(text) {
   const t = String(text || '').replace(/```[\s\S]*?```/g, ' ').trim();
@@ -55,9 +65,10 @@ export function mainView(runtime) {
   // el indicador cuenta tiempo y tokens de todo el turno y sigue visible mientras el modelo escribe:
   // así siempre se sabe que está trabajando (y en qué)
   let turn = { t0: Date.now(), tokens: 0 };
+  let thought = '';
   return {
     beginTurn() { turn = { t0: Date.now(), tokens: 0 }; },
-    thinking() { spinner.start(pick(), { since: turn.t0, tokens: turn.tokens }); },
+    thinking() { thought = ''; spinner.start(pick(), { since: turn.t0, tokens: turn.tokens }); },
     status(verb) { if (spinner.active) spinner.setVerb(verb); },
     text(t) {
       if (!md) {
@@ -78,7 +89,13 @@ export function mainView(runtime) {
       }
     },
     reasoning(r) {
-      if (!runtime.settings.showThinking) return;
+      if (!runtime.settings.showThinking) {
+        // oculto: solo una línea con la idea actual en el indicador (que se note qué está pensando, sin llenar la pantalla)
+        thought = (thought + r).slice(-600);
+        const line = thought.split('\n').map((l) => l.replace(/[`*#>]+/g, '').trim()).filter((l) => l.length > 12).at(-1) || '';
+        spinner.setVerb(line ? `${L('Pensando', 'Thinking')}: ${line.length > 70 ? `${line.slice(0, 69)}…` : line}` : L('Pensando…', 'Thinking…'));
+        return;
+      }
       if (!rs) {
         if (liveActive()) spinner.setVerb(L('Pensando…', 'Thinking…'));
         else spinner.stop();
@@ -210,6 +227,7 @@ export class Agent {
     this.loopHits = 0;
     this.errorStreak = 0;
     this.nudges = 0;
+    this.loopBreaks = 0;
     this.toolCount = 0;
     this.view.beginTurn?.();
     while (turns < maxTurns) {
@@ -218,6 +236,18 @@ export class Agent {
       const tools = this.tools();
       await this.maybeCompact(tools, signal);
       const res = await this.callModel(tools, signal);
+      if (res.looped) {
+        // el modelo se cicló: se corta y se le pide que decida (sin guardar el texto repetido, que solo gasta contexto)
+        this.loopBreaks = (this.loopBreaks || 0) + 1;
+        if (this.loopBreaks > 2) {
+          const msg = L('Detuve la tarea: el modelo se quedó repitiendo lo mismo. Prueba apagar su pensamiento (/config → Pensamiento del modelo) o con otro modelo.', 'I stopped the task: the model kept repeating itself. Try turning off its thinking (/config → Model thinking) or another model.');
+          this.view.notice(msg);
+          return { text: msg, turns, tools: this.toolCount, tokens: this.usage.input + this.usage.output, stuck: true };
+        }
+        this.view.notice(L('El modelo se estaba repitiendo: lo corté y le pedí que decida y siga.', 'The model was repeating itself: I cut it off and asked it to decide and continue.'));
+        this.messages.push({ role: 'user', content: 'Your previous answer started repeating the same text over and over, so it was cut off. Stop deliberating: make a decision now and act (call the tool with your best attempt; it does not need to be perfect). Keep any reasoning very short.' });
+        continue;
+      }
       const assistant = { role: 'assistant', content: res.content || '' };
       if (res.toolCalls.length) {
         assistant.tool_calls = res.toolCalls.map((tc) => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.arguments || '{}' } }));
@@ -285,13 +315,26 @@ export class Agent {
       let streamed = '';
       const splitter = new TagSplitter({ onText: (t) => view.text(t), onReasoning: (r) => view.reasoning(r) });
       const t0 = Date.now();
+      // detector de ciclos: si el modelo se pone a repetir el mismo texto (pensando o escribiendo), se corta
+      const loopCtl = new AbortController();
+      const onUserAbort = () => loopCtl.abort();
+      signal?.addEventListener('abort', onUserAbort, { once: true });
+      let watch = '', sinceCheck = 0, looped = false;
+      const feed = (s) => {
+        watch = (watch + s).slice(-12000);
+        sinceCheck += s.length;
+        if (sinceCheck < 400 || looped) return;
+        sinceCheck = 0;
+        if (repeatsItself(watch)) { looped = true; loopCtl.abort(); }
+      };
       try {
         const r = await client.chat({
           messages,
           tools: mode === 'native' && specs.length ? specs : undefined,
-          signal,
+          signal: loopCtl.signal,
           onText: (t) => {
             streamed += t;
+            feed(t);
             splitter.push(t);
             view.tokens(Math.max(1, Math.round(t.length / 4)));
             // modo prompt: la llamada a la herramienta se escribe oculta; se avisa para que no parezca trabado
@@ -301,12 +344,13 @@ export class Agent {
               view.status?.(name ? L(`Preparando ${name}…`, `Preparing ${name}…`) : L('Preparando una herramienta…', 'Preparing a tool…'));
             }
           },
-          onReasoning: (x) => { view.reasoning(x); view.tokens(Math.max(1, Math.round(x.length / 4))); },
+          onReasoning: (x) => { feed(x); view.reasoning(x); view.tokens(Math.max(1, Math.round(x.length / 4))); },
           onToolCall: (name, chunk) => {
             view.status?.(name ? L(`Preparando ${name}…`, `Preparing ${name}…`) : L('Preparando una herramienta…', 'Preparing a tool…'));
             if (chunk) view.tokens(Math.max(1, Math.round(chunk.length / 4)));
           },
         });
+        signal?.removeEventListener('abort', onUserAbort);
         splitter.flush();
         view.endTurn();
         rt.addUsage(r.usage, client, Date.now() - t0);
@@ -326,8 +370,10 @@ export class Agent {
         for (const tc of toolCalls) tc.id ||= `call_${randomId()}`;
         return { content, toolCalls, parseErrors };
       } catch (e) {
+        signal?.removeEventListener('abort', onUserAbort);
         splitter.flush();
         view.endTurn();
+        if (looped && !signal?.aborted) return { content: '', toolCalls: [], parseErrors: [], looped: true };
         if (e.name === 'AbortError' || signal?.aborted) {
           this.messages.push({ role: 'assistant', content: `${stripThinking(streamed)}\n[interrupted by the user]`.trim() });
           throw abortError();

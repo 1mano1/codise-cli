@@ -439,3 +439,15 @@ Problemas reportados al probarla y solución:
   variable no existe. El error 401 explica cuál de los dos casos es.
 - Ejemplo real: llama-server.exe con `--host 0.0.0.0 --api-key …` en otra PC →
   `/provider add pc http://192.168.1.69:8081/v1 openai sk-local-…`.
+
+## Pensamiento del modelo y ciclos (rama `fix/thinking-display`)
+
+- `showThinking` ahora es `false` por defecto: el razonamiento no se imprime; el indicador muestra una línea con
+  la idea actual ("Pensando: …"). `/config` → "Mostrar pensamiento completo" lo vuelve a imprimir todo.
+- `thinking: false` (`/config` → "Pensamiento del modelo") apaga el razonamiento en servidores propios:
+  `chat_template_kwargs.enable_thinking=false` (llama.cpp, vLLM, LM Studio) o `think:false` (Ollama). No se manda
+  a la nube. Probado con qwen3.6-35b-a3b en llama-server: con pensamiento, "di hola" gastó 300 tokens pensando.
+- `repeatsItself`: si los últimos 300 caracteres del texto o razonamiento ya aparecieron 2 veces antes, se corta
+  la petición, no se guarda el texto repetido y se le pide decidir (máx. 2 por turno; luego se detiene).
+- Mascotas: `normalizeMascot` corrige espacios, filas disparejas y bordes vacíos; `/mascot` muestra las que no
+  cargan y por qué (`mascotErrors`).
