@@ -2,10 +2,10 @@
 import { Read, Write, Edit, LS } from './files.js';
 import { Glob, Grep } from './search.js';
 import { Bash } from './bash.js';
-import { WebFetch, WebSearch } from './web.js';
+import { WebFetch, WebSearch, Download } from './web.js';
 import { TodoWrite, Task, Skill, AskUser, ExitPlanMode, Remember } from './meta.js';
 
-export const BUILTIN_TOOLS = [Read, Write, Edit, LS, Glob, Grep, Bash, WebFetch, WebSearch, TodoWrite, Task, Skill, Remember, AskUser, ExitPlanMode];
+export const BUILTIN_TOOLS = [Read, Write, Edit, LS, Glob, Grep, Bash, WebFetch, WebSearch, Download, TodoWrite, Task, Skill, Remember, AskUser, ExitPlanMode];
 
 // Descripción para el modelo (algunas herramientas la generan según el estado).
 // lean (modelos pequeños/locales): descripción de una sola frase y parámetros sin textos de ayuda.

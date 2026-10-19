@@ -503,3 +503,14 @@ con `/rewind`.
 
 - El REPL interactivo captura `unhandledRejection`/`uncaughtException`: muestra el error y guarda la conversación
   en vez de cerrar el proceso (p. ej. un comando lanzado mientras el agente trabaja).
+
+## Herramienta Download (rama `feat/download-tool`)
+
+- `Download` (en `src/tools/web.js`): baja un archivo a disco por streaming (no a memoria), sigue redirecciones,
+  tope de tamaño (500 MB por defecto), nombre desde la URL si `path` es carpeta. Es `network` + `edits`: pasa por
+  el diálogo de permisos mostrando "host → ruta". WebFetch sigue siendo solo texto.
+- Seguridad: calcula el sha256 y, si se pasa `sha256`, verifica y borra el archivo si no coincide (archivo
+  manipulado). Avisa cuando el archivo es ejecutable (lista EXECUTABLE) en el permiso y en el resultado, y el
+  prompt le dice al modelo: solo fuentes oficiales, pasar el sha256 si la página lo publica, no ejecutar sin que
+  el usuario confirme. No hay antivirus; la verificación es de integridad/procedencia, no de contenido.
+- Prompt: para bajar archivos usar Download, no WebFetch; el modelo ya no debe decir que no puede descargar.

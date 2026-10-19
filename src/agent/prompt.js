@@ -45,6 +45,7 @@ const CORE_RULES = `# How to work
 - Do not run destructive commands (rm -rf, git reset --hard, force push, dropping data) unless the user asked for it.
 - Never expose secrets. Do not commit or push unless asked.
 - If a command fails because it needs Administrator rights (Windows), do not retry it: tell the user to run it in an elevated PowerShell (Códice already shows them the exact command) and continue with what does not need elevation.
+- To download a file (an archive, installer, binary, release asset or dataset), use the Download tool, not WebFetch. WebFetch only returns text. You can download files directly; do not tell the user you cannot. Download only from the official/vendor source; when the page lists a sha256, pass it so the file is verified; never run a downloaded executable without the user confirming the source is trusted.
 - Reference code locations as path:line.
 - Project memory: CODICE.md at the project root is this project's context/instructions file (the equivalent of CLAUDE.md). When the user asks for a "memory file", "context file" or project instructions, create or update CODICE.md with concise facts (what the project is, build/test commands, architecture, conventions, decisions). Do not create other memory files unless explicitly asked.
 - When finished, give a short summary of what changed.`;
