@@ -18,7 +18,22 @@ export function isScreenReader() {
 }
 
 export function width() {
+  if (capture) return capture.width;
   return Math.max(40, Math.min(opts.stream.columns || 100, 160));
+}
+
+// Captura lo que imprime fn (para mostrarlo en un panel en vez de dejarlo en la conversación).
+let capture = null;
+export async function captureOutput(fn, { width: w } = {}) {
+  const prev = capture;
+  capture = { text: '', width: w || Math.max(40, Math.min((opts.stream.columns || 100) - 4, 156)) };
+  const mine = capture;
+  try {
+    await fn();
+  } finally {
+    capture = prev;
+  }
+  return mine.text;
 }
 
 let activeSpinner = null;
@@ -38,6 +53,7 @@ function record(entry) {
 export function outBlock(render) {
   const text = render();
   if (!text) return;
+  if (capture) { out(text); return; }
   if (liveActive() && opts.stream === process.stdout) {
     record({ render });
     writeAbove(text);
@@ -55,10 +71,10 @@ export function handleResize() {
   resizeTimer = setTimeout(() => {
     eraseLive();
     process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
-    anchorBottom(); // la caja sigue abajo; la conversación se vuelve a dibujar encima, al nuevo ancho
+    anchorBottom(); // la conversación se vuelve a dibujar desde arriba al nuevo ancho; la caja sigue abajo
     const text = history.map((e) => (e.render ? e.render() : e.text)).join('');
-    if (text) process.stdout.write(text.endsWith('\n') ? text : `${text}\n`);
-    drawLive();
+    if (text) writeAbove(text);
+    else drawLive();
   }, 120);
 }
 
@@ -66,6 +82,7 @@ export function handleResize() {
 export function out(s = '') {
   s = String(s);
   if (!s) return;
+  if (capture) { capture.text += s; lastChar = s.at(-1); return; }
   if (liveActive() && opts.stream === process.stdout) {
     record({ text: s.endsWith('\n') ? s : `${s}\n` });
     writeAbove(s);
