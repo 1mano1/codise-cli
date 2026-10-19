@@ -107,7 +107,7 @@ export const Bash = {
     properties: {
       command: { type: 'string', description: 'Command to run' },
       description: { type: 'string', description: 'Short description of what the command does (5-10 words)' },
-      timeout: { type: 'number', description: 'Timeout in milliseconds (default 120000, max 600000)' },
+      timeout: { type: 'number', description: 'Timeout in milliseconds (default 120000, max 600000). Use a large value for installs or builds.' },
     },
     required: ['command'],
   },
@@ -116,7 +116,11 @@ export const Bash = {
   preview: (a) => ({ kind: 'command', command: a.command, description: a.description }),
   sandboxable: true,
   async run(a, ctx) {
-    const timeout = Math.min(Number(a.timeout) || 120000, 600000);
+    // el timeout es en milisegundos, pero muchos modelos lo pasan en segundos (p. ej. 120 por 2 min):
+    // un valor menor a 1000 se interpreta como segundos para no matar el comando en una fracción de segundo
+    let timeout = Number(a.timeout) || 120000;
+    if (timeout > 0 && timeout < 1000) timeout *= 1000;
+    timeout = Math.min(Math.max(timeout, 1000), 600000);
     const rt = ctx.runtime;
     const command = String(a.command);
     const base = { cwd: ctx.cwd, timeout, signal: ctx.signal, shell: detectShell(rt.settings) };
@@ -153,7 +157,7 @@ export const Bash = {
     }
     if (r.killed === 'abort') throw Object.assign(new Error(L('Interrumpido por el usuario', 'Interrupted by the user')), { name: 'AbortError' });
     let out = truncateMiddle(r.output.replace(/\r\n/g, '\n').trimEnd(), 30000) + note;
-    if (r.killed === 'timeout') out += `\n[command stopped: exceeded ${timeout} ms]`;
+    if (r.killed === 'timeout') out += `\n[command stopped: exceeded the ${Math.round(timeout / 1000)} s timeout. If it just needs more time, run it again with a larger timeout.]`;
     const lines = out ? out.split('\n') : [];
     const display = r.code === 0
       ? (lines.length ? `${lines.slice(0, 3).join('\n')}${lines.length > 3 ? L(`\n… ${lines.length - 3} líneas más`, `\n… ${lines.length - 3} more lines`) : ''}` : L('Sin salida', 'No output'))

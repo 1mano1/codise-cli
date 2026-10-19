@@ -402,6 +402,17 @@ export async function unitTests(t) {
     assert(box.state === 'prompt', 'al cerrar el diálogo se pasa a escribir');
   });
 
+  await t('Bash: un timeout pequeño se entiende como segundos (no mata el comando en milisegundos)', async (assert) => {
+    const { Bash } = await import('../src/tools/bash.js');
+    const ctx = { cwd: ROOT, runtime: { settings: {}, projectRoot: ROOT } };
+    const ok = await Bash.run({ command: 'echo listo', timeout: 120 }, ctx); // 120 → 120 s, no 120 ms
+    assert(!ok.isError && ok.content.includes('listo'), `timeout 120 no mata el comando: ${ok.content}`);
+    const t0 = Date.now();
+    const slow = await Bash.run({ command: 'sleep 4', timeout: 1 }, ctx); // 1 → 1 s
+    const ms = Date.now() - t0;
+    assert(ms >= 900 && ms < 3000 && /exceeded the 1 s timeout/.test(slow.content), `timeout 1 corta a ~1 s: ${ms} ms`);
+  });
+
   await t('compactación: la transcripción respeta el presupuesto', async (assert) => {
     const { transcript, keepFromIndex } = await import('../src/agent/compact.js');
     const msgs = [{ role: 'user', content: 'objetivo inicial' }];
