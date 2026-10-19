@@ -334,6 +334,7 @@ class Repl {
     this.runtime.recentActivity = readActivity(this.runtime.projectRoot, { limit: 10, excludeSession: s.id });
     this.agent = new Agent(this.runtime, { messages: s.messages });
     ui.success(L(`Conversación retomada: ${s.title || s.id} (${s.messages.length} mensajes)`, `Conversation resumed: ${s.title || s.id} (${s.messages.length} messages)`));
+    if (s.repaired) ui.hint(L(`Reparé ${s.repaired} llamada(s) a herramientas que estaban cortadas; el resto de la conversación sigue igual.`, `Repaired ${s.repaired} cut-off tool call(s); the rest of the conversation is unchanged.`));
   }
 
   showError(e) {

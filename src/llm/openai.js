@@ -3,6 +3,7 @@ import { sse } from './stream.js';
 import { L } from '../i18n.js';
 import { parseRateLimits } from '../usage.js';
 import { postJSON } from './compress.js';
+import { openaiSamplingFields } from './sampling.js';
 
 export class LLMError extends Error {
   constructor(message, { status = 0, body = '', network = false, toolsUnsupported = false } = {}) {
@@ -29,9 +30,10 @@ export async function safeFetch(url, init, label) {
 }
 
 export class OpenAIClient {
-  constructor({ baseUrl, apiKey, model, temperature = 0.2, maxTokens = 0, headers = {}, label = 'el proveedor', gzip = false, thinking }) {
+  constructor({ baseUrl, apiKey, model, temperature = 0.2, maxTokens = 0, headers = {}, label = 'el proveedor', gzip = false, thinking, sampling = null }) {
     this.gzip = gzip;
     this.thinking = thinking;
+    this.sampling = sampling;
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.apiKey = apiKey;
     this.model = model;
@@ -63,6 +65,7 @@ export class OpenAIClient {
     if (/openrouter\.ai/.test(this.baseUrl)) body.usage = { include: true }; // OpenRouter devuelve el costo real
     // llama.cpp, vLLM y LM Studio: apaga el razonamiento de Qwen3 y similares (plantilla de chat)
     if (this.thinking === false) body.chat_template_kwargs = { enable_thinking: false };
+    Object.assign(body, openaiSamplingFields(this.sampling));
     const res = await postJSON(`${this.baseUrl}/chat/completions`, { headers: this.headers(), body, signal, gzip: this.gzip }, this.label);
     this.lastRateLimits = parseRateLimits(res.headers) || this.lastRateLimits;
     if (!res.ok) {
