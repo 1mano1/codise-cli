@@ -294,6 +294,48 @@ export async function unitTests(t) {
     assert(out.pluginHooks(plugins[0]).PostToolUse?.[0]?.pluginRoot, 'hooks con raíz del plugin');
   });
 
+  await t('sandbox: argumentos de cada motor, bloqueos, proxy de dominios y permisos', async (assert) => {
+    const S = await import('../src/sandbox.js');
+    const http = await import('node:http');
+    const b = S.bwrapArgs({ writable: ['/home/u/p', '/home/u/.codice/sandbox/tmp'], cwd: '/home/u/p', network: false });
+    assert(b.join(' ').includes('--ro-bind / /') && b.join(' ').includes('--bind /home/u/p /home/u/p') && b.includes('--unshare-net'), `bwrap: ${b.join(' ')}`);
+    assert(!S.bwrapArgs({ writable: [], cwd: '/', network: true }).includes('--unshare-net'), 'bwrap con red permitida');
+    const prof = S.seatbeltProfile({ writable: ['/Users/u/p'], proxyPort: 4321 });
+    assert(prof.includes('(deny file-write*)') && prof.includes('(subpath "/Users/u/p")') && prof.includes('(deny network*)') && prof.includes('localhost:4321'), 'perfil de macOS');
+    assert(S.containerPath('/a/proj', '/a/proj/src/x') === '/workspace/src/x' && S.containerPath('/a/proj', '/otro') === '/workspace', 'ruta dentro del contenedor');
+    assert(S.detectBlock('npm ERR! getaddrinfo ENOTFOUND registry.npmjs.org', { code: 1 })?.host === 'registry.npmjs.org', 'red bloqueada con host');
+    assert(S.detectBlock("curl: (6) Could not resolve host: example.com", { code: 6 })?.kind === 'network', 'curl sin red');
+    assert(S.detectBlock('TypeError: fetch failed', { code: 1 })?.kind === 'network', 'fetch de Node sin red (macOS)');
+    assert(S.detectBlock("touch: cannot touch '/etc/x': Read-only file system", { code: 1 })?.path === '/etc/x', 'escritura bloqueada con ruta');
+    assert(S.detectBlock('ENOTFOUND x.com', { code: 0 }) === null && S.detectBlock('test failed: expected 2', { code: 1 }) === null, 'sin falsos positivos');
+    assert(S.hostAllowed('registry.npmjs.org', ['npmjs.org']) && !S.hostAllowed('evilnpmjs.org', ['npmjs.org']) && !S.hostAllowed('github.com', []), 'dominios permitidos');
+    // proxy: deja pasar solo lo permitido
+    const target = http.createServer((q, r) => r.end('hola')); await new Promise((r) => target.listen(0, '127.0.0.1', r));
+    const p = await S.startProxy(() => ['127.0.0.1']);
+    const viaProxy = (host) => new Promise((resolve) => {
+      const req = http.request({ host: '127.0.0.1', port: p.port, method: 'GET', path: `http://${host}:${target.address().port}/` }, (r) => { let d = ''; r.on('data', (x) => { d += x; }); r.on('end', () => resolve({ status: r.statusCode, d })); });
+      req.on('error', (e) => resolve({ status: 0, d: e.message })); req.end();
+    });
+    const ok = await viaProxy('127.0.0.1');
+    const no = await viaProxy('localhost');
+    assert(ok.status === 200 && ok.d === 'hola', `proxy permite: ${ok.status}`);
+    assert(no.status === 403 && /Blocked by Codice sandbox: host localhost/.test(no.d), `proxy bloquea: ${no.status}`);
+    S.stopProxy(); target.close();
+    // permisos: con el sandbox activo, Bash no pregunta (motor forzado para la prueba)
+    const { Permissions } = await import('../src/permissions.js');
+    const prev = process.env.CODICE_SANDBOX_ENGINE;
+    process.env.CODICE_SANDBOX_ENGINE = 'bwrap';
+    try {
+      const rt = { settings: { sandbox: { mode: 'auto' }, permissions: {} }, permissionMode: 'default' };
+      const bash = { name: 'Bash', sandboxable: true, permissionKey: (a) => a.command };
+      const r1 = await new Permissions(rt).check(bash, { command: 'npm test' }, { ui: null });
+      assert(r1.allowed && r1.sandboxed, 'Bash permitido sin preguntar dentro del sandbox');
+      rt.settings.sandbox.mode = 'off';
+      const r2 = await new Permissions(rt).check(bash, { command: 'npm test' }, { ui: null });
+      assert(!r2.allowed, 'sin sandbox vuelve a pedir permiso');
+    } finally { if (prev == null) delete process.env.CODICE_SANDBOX_ENGINE; else process.env.CODICE_SANDBOX_ENGINE = prev; }
+  });
+
   await t('compactación: la transcripción respeta el presupuesto', async (assert) => {
     const { transcript, keepFromIndex } = await import('../src/agent/compact.js');
     const msgs = [{ role: 'user', content: 'objetivo inicial' }];

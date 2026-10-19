@@ -4,6 +4,7 @@ import path from 'node:path';
 import { toolsPrompt } from '../llm/textTools.js';
 import { detectShell, shellLabel } from '../tools/bash.js';
 import { formatActivity } from '../activity.js';
+import { sandboxStatus } from '../sandbox.js';
 
 const OUTPUT_STYLES = {
   normal: '',
@@ -14,10 +15,14 @@ const OUTPUT_STYLES = {
 
 function envBlock(runtime, model) {
   const isGit = fs.existsSync(path.join(runtime.projectRoot, '.git'));
+  const sb = runtime.settings.sandbox?.mode && runtime.settings.sandbox.mode !== 'off' ? sandboxStatus(runtime.settings) : null;
+  let shellLine = `- Platform: ${process.platform}; shell used by the Bash tool: ${shellLabel(detectShell(runtime.settings))}`;
+  if (sb?.active && sb.engine.name === 'docker') shellLine = `- Platform: ${process.platform}, but the Bash tool runs inside a Linux container (sh) with the project mounted at /workspace`;
+  const sbLine = sb?.active ? `\n- Bash commands run in a sandbox: they can only write inside the project and a temp folder, and ${sb.allowedDomains.length ? `network access is limited to ${sb.allowedDomains.join(', ')}` : 'have no network access'}. If something is blocked, the user decides; do not try to work around it.` : '';
   return `# Environment
 - Working directory: ${runtime.cwd}
 - Project root: ${runtime.projectRoot}${isGit ? ' (git repository)' : ''}
-- Platform: ${process.platform}; shell used by the Bash tool: ${shellLabel(detectShell(runtime.settings))}
+${shellLine}${sbLine}
 - Date: ${new Date().toISOString().slice(0, 10)}
 - Model: ${model}`;
 }

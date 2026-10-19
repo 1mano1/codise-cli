@@ -220,9 +220,10 @@ export function artWithMascot(mascot, { state = 'idle' } = {}) {
 }
 
 // Pantalla de inicio mínima: marca, una línea de estado y una de ayuda.
-export function banner({ version, model, provider, cwd, memory, mascot, activity = 0 }) {
+export function banner({ version, model, provider, cwd, memory, mascot, activity = 0, sandbox = null }) {
   if (opts.screenReader) {
     println(L(`Códice ${version}. Agente de programación open source.`, `Códice ${version}. Open-source coding agent.`));
+    if (sandbox) println(`Sandbox: ${sandbox.text}.`);
     println(model ? L(`Modelo ${model} vía ${provider}.`, `Model ${model} via ${provider}.`) : L('Sin modelo configurado. Escribe /setup.', 'No model configured. Type /setup.'));
     println(L('Escribe /help para ver los comandos.', 'Type /help to see the commands.'));
     return;
@@ -249,6 +250,10 @@ export function banner({ version, model, provider, cwd, memory, mascot, activity
       if (memory?.length) bits.push(c.muted(memory.slice(0, 3).join(' · ')));
       if (activity) bits.push(c.muted(L(`${activity} actividades recientes`, `${activity} recent activities`)));
       info.push(`${lbl(L('memoria', 'memory'))}${bits.length ? bits.join(c.dim(' · ')) : c.dim(L('sin archivo de contexto · /init lo crea', 'no context file · /init creates it'))}`);
+    }
+    if (sandbox && !narrow) {
+      const [head, ...rest] = sandbox.text.split(' · ');
+      info.push(`${lbl('sandbox')}${sandbox.ok ? c.success(`⛨ ${head}`) : c.warning(`⛨ ${head}`)}${rest.length ? c.muted(` · ${rest.join(' · ')}`) : ''}`);
     }
     info.push(narrow ? `${c.accent('/help')}` : `${c.accent('/help')} ${c.dim(L('comandos', 'commands'))}${c.dim(' · ')}${c.accent('/models')} ${c.dim(L('modelo', 'model'))}${c.dim(' · ')}${c.accent('/theme')} ${c.dim(L('tema', 'theme'))}`);
     const rows = Math.max(pet.length, info.length);

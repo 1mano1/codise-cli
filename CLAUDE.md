@@ -393,3 +393,18 @@ Problemas reportados al probarla y solución:
   el modelo elegido. Para modelos locales sin filtros, el usuario puede usar cualquier GGUF (p. ej. "abliterated").
 - No se incluyen prompts para evadir los filtros de los modelos en la nube (viola sus términos y arriesga la cuenta).
 - Se mantienen las protecciones del equipo: permisos, no ejecutar comandos destructivos sin pedirlo, no exponer secretos.
+
+## Sandbox de comandos (rama `feat/sandbox`, diseño aprobado: Figma "v3 · Sandbox" E/F/G)
+
+- `src/sandbox.js`: motores bubblewrap (Linux), sandbox-exec (macOS, perfil seatbelt) y Docker (Windows; un
+  contenedor por proyecto `codice-sb-<hash>` que se reutiliza, proyecto en `/workspace`). Escritura: proyecto +
+  `~/.codice/sandbox/{tmp,cache}` (+ `allowWrite`); TMPDIR y cachés de npm/pip apuntan ahí. Sin red salvo
+  `allowedDomains`, vía un proxy local (CONNECT y HTTP) que solo deja pasar esos dominios.
+- Modos `sandbox.mode`: `off` (por defecto), `auto`, `strict`. Con el sandbox activo, Bash no pide permiso
+  (`autoAllow`). `detectBlock` reconoce bloqueos (ENOTFOUND/EAI_AGAIN, EROFS/EPERM, dominio rechazado por el
+  proxy). En `auto` + consola: diálogo F (permitir dominio → `.codice/settings.local.json`, fuera una vez, no).
+  En `strict` o `-p`: el modelo recibe la explicación y no debe rodearlo.
+- UI: línea `sandbox` en la bienvenida, `⛨ sandbox` en la barra de estado, `/sandbox [auto|strict|off]`.
+  El prompt le dice al modelo que está en sandbox (y que con Docker es un contenedor Linux con `sh`).
+- Pruebas reales (se omiten sin motor): en CI Linux se instala bubblewrap; macOS usa sandbox-exec; probado en
+  Windows con Docker Desktop. `CODICE_SANDBOX_ENGINE` fuerza el motor (pruebas).

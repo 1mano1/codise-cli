@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { truncateMiddle } from '../util/fs.js';
 import { L } from '../i18n.js';
+import { sandboxStatus, sandboxSpawn, detectBlock, hostAllowed } from '../sandbox.js';
 
 let cachedShell = null;
 
@@ -49,12 +50,23 @@ function killTree(child) {
   }
 }
 
-export function runShell(command, { cwd, timeout = 120000, signal, shell, env } = {}) {
+// sandbox: { status, projectRoot, onStatus } para ejecutar el comando encerrado (ver src/sandbox.js).
+export async function runShell(command, { cwd, timeout = 120000, signal, shell, env, sandbox = null } = {}) {
+  const sh = shell || detectShell();
+  let file = sh, args = argsFor(sh, command), extraEnv = {};
+  if (sandbox) {
+    try {
+      const spec = await sandboxSpawn({ status: sandbox.status, command, cwd, projectRoot: sandbox.projectRoot, shell: sh, shellArgs: args, onStatus: sandbox.onStatus });
+      ({ file, args } = spec);
+      extraEnv = spec.env;
+    } catch (e) {
+      return { code: -1, output: L(`No se pudo preparar el sandbox: ${e.message}`, `Could not prepare the sandbox: ${e.message}`), killed: null };
+    }
+  }
   return new Promise((resolve) => {
-    const sh = shell || detectShell();
-    const child = spawn(sh, argsFor(sh, command), {
+    const child = spawn(file, args, {
       cwd,
-      env: { ...process.env, CODICE: '1', ...env },
+      env: { ...process.env, CODICE: '1', ...env, ...extraEnv },
       windowsHide: true,
       detached: process.platform !== 'win32',
     });
@@ -102,11 +114,45 @@ export const Bash = {
   summary: (a) => String(a.command || '').replace(/\s+/g, ' ').slice(0, 120),
   permissionKey: (a) => String(a.command || '').trim(),
   preview: (a) => ({ kind: 'command', command: a.command, description: a.description }),
+  sandboxable: true,
   async run(a, ctx) {
     const timeout = Math.min(Number(a.timeout) || 120000, 600000);
-    const r = await runShell(String(a.command), { cwd: ctx.cwd, timeout, signal: ctx.signal, shell: detectShell(ctx.runtime.settings) });
+    const rt = ctx.runtime;
+    const command = String(a.command);
+    const base = { cwd: ctx.cwd, timeout, signal: ctx.signal, shell: detectShell(rt.settings) };
+    const boxed = (st) => ({ ...base, sandbox: { status: st, projectRoot: rt.projectRoot, onStatus: (m) => rt.spinner?.setVerb?.(m) } });
+    let st = sandboxStatus(rt.settings);
+    if (st.mode === 'strict' && !st.active) {
+      return { content: `The sandbox is required (strict mode) but unavailable: ${st.problem}. Ask the user to fix it or change the mode with /sandbox.`, display: L('sandbox no disponible', 'sandbox unavailable'), isError: true };
+    }
+    let r = await runShell(command, st.active ? boxed(st) : base);
+    let note = '';
+    let block = st.active ? detectBlock(r.output, r) : null;
+    // un fallo de red hacia un dominio ya permitido no es culpa del sandbox
+    if (block?.kind === 'network' && block.host && hostAllowed(block.host, st.allowedDomains)) block = null;
+    if (block && r.killed !== 'abort') {
+      const what = block.kind === 'network' ? `network access${block.host ? ` to ${block.host}` : ''}` : `writing${block.path ? ` to ${block.path}` : ''} outside the project`;
+      if (st.mode === 'auto' && ctx.ui?.interactive && ctx.ui.sandboxBlocked) {
+        const ans = await ctx.ui.sandboxBlocked({ command, block, agentLabel: ctx.agentLabel });
+        if (ans?.choice === 'allow' && block.host) {
+          const domains = [...new Set([...(rt.localSettings?.sandbox?.allowedDomains || []), block.host])];
+          rt.save('sandbox.allowedDomains', domains, 'local');
+          st = sandboxStatus(rt.settings);
+          r = await runShell(command, boxed(st));
+          note = `\n[sandbox: the user allowed network access to ${block.host} for this project]`;
+        } else if (ans?.choice === 'outside') {
+          r = await runShell(command, base);
+          note = '\n[ran outside the sandbox once, with the user\'s approval]';
+        } else {
+          const fb = ans?.feedback ? ` and said: ${ans.feedback}` : '';
+          return { content: `${r.output.trimEnd()}\n[sandbox blocked ${what}. The user declined to allow it${fb}]`, display: L('bloqueado por el sandbox', 'blocked by the sandbox'), isError: true, userDenied: true };
+        }
+      } else {
+        note = `\n[sandbox blocked ${what}. Do not try to work around it; tell the user they can allow it with /sandbox]`;
+      }
+    }
     if (r.killed === 'abort') throw Object.assign(new Error(L('Interrumpido por el usuario', 'Interrupted by the user')), { name: 'AbortError' });
-    let out = truncateMiddle(r.output.replace(/\r\n/g, '\n').trimEnd(), 30000);
+    let out = truncateMiddle(r.output.replace(/\r\n/g, '\n').trimEnd(), 30000) + note;
     if (r.killed === 'timeout') out += `\n[command stopped: exceeded ${timeout} ms]`;
     const lines = out ? out.split('\n') : [];
     const display = r.code === 0
