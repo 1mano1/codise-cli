@@ -485,3 +485,21 @@ con `/rewind`.
 - `BoxInput` separa `working` (el agente trabaja) del estado de foco (`idle/prompt/modal/ask`), para que al
   terminar el agente no se pise un diálogo abierto. `command(text, { live })` no toca `setBusy` en modo live;
   `runLiveCommand` evita reentrancia. Placeholder de ocupado: "/comandos corren ya".
+
+## Aviso de "necesita Administrador" (rama `feat/elevation-hint`)
+
+- `needsElevation(salida)` detecta fallos por falta de permisos de administrador en Windows (acceso denegado,
+  "requires elevation", "administrator rights", variantes en español…). `elevatedHint(cmd)` arma el aviso.
+- Cuando un Bash falla por eso, Codice le muestra al usuario (vía `ctx.ui.markdown`) el comando listo para pegar
+  en una PowerShell como Administrador, como el `!` de Claude Code; el display dice "Necesita Administrador".
+- El resultado para el modelo incluye "needs Administrator… Do not retry"; regla en el prompt: no reintentar, avisar.
+
+## Bug del timeout de Bash (rama `fix/bash-timeout-seconds`)
+
+- El timeout es en ms pero los modelos suelen pasarlo en segundos; un valor < 1000 se escala ×1000 y hay un piso
+  de 1 s, para no matar instalaciones/builds en milisegundos (p. ej. `choco install` moría en 120 ms).
+
+## Sin caídas por errores asíncronos (rama `fix/no-crash-on-async-error`)
+
+- El REPL interactivo captura `unhandledRejection`/`uncaughtException`: muestra el error y guarda la conversación
+  en vez de cerrar el proceso (p. ej. un comando lanzado mientras el agente trabaja).
