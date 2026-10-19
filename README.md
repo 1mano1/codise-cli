@@ -120,7 +120,7 @@ Las herramientas (archivos, Bash) se ejecutan en la laptop; solo la inferencia v
 | `/resume`, `/rewind`, `/clear` | Sesiones y puntos de control |
 | `/theme`, `/mascot`, `/config`, `/accessibility` | Personalización |
 | `/bench`, `/connect` | Rendimiento y PC remota |
-| `/cost`, `/doctor`, `/status` | Uso y diagnóstico |
+| `/cost`, `/usage`, `/doctor`, `/status` | Uso, consumo y saldo por proveedor, diagnóstico |
 
 **Atajos**: `!cmd` ejecuta en el shell · `#nota` guarda en memoria · `@ruta` adjunta un archivo · `\` + enter nueva línea · `esc` interrumpe · `ctrl+o` salida completa · `ctrl+c` ×2 salir.
 

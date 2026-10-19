@@ -331,3 +331,14 @@ Problemas reportados al probarla y solución:
 - **Recuperación**: reintentos automáticos ante fallos pasajeros del modelo (red, 429/5xx, motor reiniciando;
   1 s / 3 s / 8 s, uno solo si la conexión es rechazada); si el contexto se desborda, compacta y reintenta;
   cada error de herramienta llega con la indicación de investigar la causa, corregir y seguir; regla en el prompt.
+
+## Consumo y saldo (rama `feat/usage`)
+
+- `src/usage.js`: histórico local por día y `proveedor:modelo` en `~/.codice/usage.json` (400 días), costo
+  estimado con `settings.pricing` (USD por millón: `input`, `output`, `cached`) o el costo real que devuelve
+  OpenRouter, límites de velocidad leídos de los encabezados (`x-ratelimit-*`, `anthropic-ratelimit-*`) y saldo
+  por API donde existe: OpenRouter (usado/límite/restante), DeepSeek (saldo) y la PC propia (`/codice/usage`).
+- `/usage [today|month|all]`: sesión, hoy y mes por modelo, saldo del proveedor actual, límites y enlace de
+  facturación cuando el proveedor no da el saldo por API (Anthropic, OpenAI, Gemini, Groq). `/cost` sigue igual.
+- `codice serve` lee la cola de cada respuesta de chat para contar tokens (total, por día y por IP) y los guarda
+  en `~/.codice/serve-usage.json`; `GET /codice/usage` (con token) los expone.

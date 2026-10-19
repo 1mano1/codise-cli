@@ -96,7 +96,7 @@ export async function e2eTests(t) {
 
     await t('consola interactiva por tubería: comandos, shell, memoria y prompt', async (assert) => {
       m.push({ content: 'Hola, soy Códice.' });
-      const input = ['/version', '!echo desde-shell', '# usar pnpm siempre', 'hola', '/cost', '/exit', ''].join('\n');
+      const input = ['/version', '!echo desde-shell', '# usar pnpm siempre', 'hola', '/cost', '/usage', '/exit', ''].join('\n');
       const r = await runCli([...base], { ...opts, input });
       assert(r.stdout.includes('codice 0.1.0'), '/version');
       assert(r.stdout.includes('desde-shell'), '!shell');
@@ -105,6 +105,7 @@ export async function e2eTests(t) {
       assert(m.requests.at(-1).body.messages.at(-1).content.includes('<bash-output>'), 'salida del shell añadida al contexto');
       assert(m.requests.at(-1).body.messages[0].content.includes('usar pnpm siempre'), 'memoria en el system prompt');
       assert(r.stdout.includes('peticiones'), '/cost');
+      assert(r.stdout.includes('Esta sesión') && r.stdout.includes('Hoy'), '/usage');
     });
 
     await t('PC remota: codice serve + codice connect + tarea a través del proxy', async (assert) => {
@@ -131,6 +132,12 @@ export async function e2eTests(t) {
         assert(r.stdout.includes('Respondo desde la PC.'), `respuesta: ${r.stdout} ${r.stderr}`);
         const viaProxy = m.requests.slice(before).find((q) => q.url === '/api/chat');
         assert(viaProxy && !viaProxy.headers.authorization, 'petición llegó al backend Ollama sin el token');
+        const noAuth = await fetch(`http://127.0.0.1:${port}/codice/usage`);
+        assert(noAuth.status === 401, `/codice/usage pide token: ${noAuth.status}`);
+        const su = await (await fetch(`http://127.0.0.1:${port}/codice/usage`, { headers: { Authorization: 'Bearer secreto123' } })).json();
+        assert(su.today?.requests >= 1 && su.today.input >= 100 && su.today.output >= 20, `consumo servido: ${JSON.stringify(su.today)}`);
+        const u = await runCli([], { ...laptop, input: '/usage\n/exit\n' });
+        assert(/Proveedor/.test(u.stdout) && /total/.test(u.stdout) && /tu PC/.test(u.stdout), `/usage con PC remota: ${u.stdout}`);
       } finally {
         server.kill();
       }

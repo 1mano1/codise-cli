@@ -1,6 +1,7 @@
 // Cliente para APIs compatibles con OpenAI (LM Studio, llama.cpp, vLLM, Jan, OpenRouter, OpenAI, Groq…).
 import { sse } from './stream.js';
 import { L } from '../i18n.js';
+import { parseRateLimits } from '../usage.js';
 
 export class LLMError extends Error {
   constructor(message, { status = 0, body = '', network = false, toolsUnsupported = false } = {}) {
@@ -56,7 +57,9 @@ export class OpenAIClient {
     if (tools?.length) body.tools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
     const mt = maxTokens || this.maxTokens;
     if (mt) body.max_tokens = mt;
+    if (/openrouter\.ai/.test(this.baseUrl)) body.usage = { include: true }; // OpenRouter devuelve el costo real
     const res = await safeFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify(body), signal }, this.label);
+    this.lastRateLimits = parseRateLimits(res.headers) || this.lastRateLimits;
     if (!res.ok) {
       const text = await res.text();
       // algunos servidores no aceptan stream_options
@@ -118,7 +121,7 @@ export class OpenAIClient {
       content,
       reasoning,
       toolCalls: calls.filter((x) => x && x.name),
-      usage: usage ? { input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0, cached: usage.prompt_tokens_details?.cached_tokens || 0 } : null,
+      usage: usage ? { input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0, cached: usage.prompt_tokens_details?.cached_tokens || 0, cost: typeof usage.cost === 'number' ? usage.cost : undefined } : null,
       finish,
     };
   }

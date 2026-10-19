@@ -293,4 +293,23 @@ export async function unitTests(t) {
     assert(res.loadAgents(opts)['ejemplo:translator'], 'agente del plugin');
     assert(out.pluginHooks(plugins[0]).PostToolUse?.[0]?.pluginRoot, 'hooks con raíz del plugin');
   });
+
+  await t('usage: costo estimado, histórico, límites y uso desde la cola', async (assert) => {
+    const U = await import('../src/usage.js');
+    const cost = U.estimateCost({ m1: { input: 3, output: 15, cached: 0.3 } }, 'p', 'm1', { input: 1e6, cached: 5e5, output: 1e5 });
+    assert(Math.abs(cost - (1.5 + 0.15 + 1.5)) < 1e-9, `costo: ${cost}`);
+    assert(U.estimateCost({}, 'p', 'x', { input: 1 }) === null, 'sin precio');
+    U.recordUsage({ provider: 'p', model: 'm1', usage: { input: 10, output: 2, cached: 1 }, cost: 0.5, kind: 'nube' });
+    U.recordUsage({ provider: 'p', model: 'm1', usage: { input: 5, output: 1 }, kind: 'nube' });
+    const today = U.usageTotals('today')['p:m1'];
+    assert(today && today.requests === 2 && today.input === 15 && today.output === 3 && today.cost === 0.5, `histórico: ${JSON.stringify(today)}`);
+    assert(U.usageTotals('month')['p:m1']?.requests >= 2, 'mes');
+    const rl = U.parseRateLimits(new Headers({ 'anthropic-ratelimit-tokens-remaining': '9000', 'anthropic-ratelimit-tokens-limit': '10000', 'x-ratelimit-remaining-requests': '49' }));
+    assert(rl?.tokens.remaining === 9000 && rl.tokens.limit === 10000 && rl.requests.remaining === 49, 'límites');
+    assert(U.parseRateLimits(new Headers()) === null, 'sin límites');
+    const sse = ['data: {"choices":[]}', '', 'data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":3}}', '', 'data: [DONE]', ''].join('\n');
+    assert(JSON.stringify(U.usageFromTail(sse)) === '{"input":7,"output":3}', 'SSE');
+    const nd = ['{"done":false}', '{"done":true,"prompt_eval_count":4,"eval_count":2}', ''].join('\n');
+    assert(JSON.stringify(U.usageFromTail(nd)) === '{"input":4,"output":2}', 'NDJSON');
+  });
 }
