@@ -531,6 +531,17 @@ export async function unitTests(t) {
     assert(shown.some((s) => /Administrador|Administrator/.test(s) && s.includes('winget install Foo.Bar')), `avisa de admin con el comando: ${shown.join(' | ')}`);
   });
 
+  await t('Bash: no busca en todo el disco (find /c) — redirige a Glob/Grep sin colgarse', async (assert) => {
+    const { wholeDriveScan, Bash } = await import('../src/tools/bash.js');
+    assert(['find /c -name x', 'find / -name y', 'find /c/ -type f', 'grep -r foo /c'].every(wholeDriveScan), 'detecta búsquedas en todo el disco');
+    assert(!['find /c/ProyectosIA/Codice -name x', 'find . -name x', 'find src -name "*.js"', 'grep -r foo src/', 'ls /c'].some(wholeDriveScan), 'no marca búsquedas en una carpeta');
+    if (process.platform !== 'win32') return; // la guardia en run() es solo Windows
+    const t0 = Date.now();
+    const r = await Bash.run({ command: 'find /c -name pcap.h 2>/dev/null | head -5', timeout: 120000 }, { cwd: ROOT, runtime: { settings: {}, projectRoot: ROOT } });
+    assert(Date.now() - t0 < 1000, 'no se ejecuta (instantáneo, no se cuelga)');
+    assert(r.isError && /Glob|Grep/.test(r.content), `sugiere Glob/Grep: ${r.display}`);
+  });
+
   await t('Bash: informa la salida en vivo mientras corre (para que un comando largo no parezca trabado)', async (assert) => {
     const { runShell } = await import('../src/tools/bash.js');
     const seen = [];

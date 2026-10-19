@@ -565,3 +565,13 @@ Dos bloqueos genéricos que el usuario documentó al ver al agente atascarse en 
   usuario pegue el comando real.
 - Recordatorio para el usuario: `codice` está enlazado a la carpeta del repo (siempre lo último en `dev`), pero un
   Códice ABIERTO sigue con el código viejo en memoria hasta cerrarlo del todo y reabrirlo.
+
+## No buscar en todo el disco (rama `fix/no-whole-drive-scan`)
+
+- Causa de "se congela 40 min": el agente corría `find /c -name …` (todo el disco C:), que en Windows es lentísimo
+  por las junctions y no imprime nada, así que cada intento consumía el timeout (hasta 2 min) sin salida y se
+  repetía. El timeout sí mata cada comando; lo malo era encadenar muchos.
+- `wholeDriveScan(comando)` detecta `find /`, `find /c`, `grep -r … /c`. En Windows el Bash tool NO lo ejecuta:
+  devuelve al instante una nota pidiendo usar las herramientas Glob (por nombre) o Grep (por contenido), o una
+  carpeta concreta. No marca búsquedas en subcarpetas (`find /c/Proyecto/… -name`).
+- Regla en el prompt: usar Glob/Grep, nunca `find`/`grep -r` sobre todo el disco.
