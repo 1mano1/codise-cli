@@ -203,7 +203,7 @@ export function artWithMascot(mascot, { state = 'idle' } = {}) {
 }
 
 // Pantalla de inicio mínima: marca, una línea de estado y una de ayuda.
-export function banner({ version, model, provider, cwd, memory, mascot }) {
+export function banner({ version, model, provider, cwd, memory, mascot, activity = 0 }) {
   if (opts.screenReader) {
     println(L(`Códice ${version}. Agente de programación open source.`, `Códice ${version}. Open-source coding agent.`));
     println(model ? L(`Modelo ${model} vía ${provider}.`, `Model ${model} via ${provider}.`) : L('Sin modelo configurado. Escribe /setup.', 'No model configured. Type /setup.'));
@@ -226,7 +226,13 @@ export function banner({ version, model, provider, cwd, memory, mascot }) {
       `${lbl(L('modelo', 'model'))}${model ? `${c.soft(model, { bold: true })}${narrow ? '' : `  ${c.muted(`· ${provider}`)}`}` : c.warning(L('sin modelo — /setup', 'no model — /setup'))}`,
       `${lbl(L('carpeta', 'folder'))}${c.info(shortCwd)}`,
     ];
-    if (memory?.length && !narrow) info.push(`${lbl(L('memoria', 'memory'))}${c.muted(memory.slice(0, 3).join(' · '))}`);
+    // qué contexto leyó al iniciar (archivos de memoria y actividad de sesiones anteriores)
+    if (!narrow) {
+      const bits = [];
+      if (memory?.length) bits.push(c.muted(memory.slice(0, 3).join(' · ')));
+      if (activity) bits.push(c.muted(L(`${activity} actividades recientes`, `${activity} recent activities`)));
+      info.push(`${lbl(L('memoria', 'memory'))}${bits.length ? bits.join(c.dim(' · ')) : c.dim(L('sin archivo de contexto · /init lo crea', 'no context file · /init creates it'))}`);
+    }
     info.push(narrow ? `${c.accent('/help')}` : `${c.accent('/help')} ${c.dim(L('comandos', 'commands'))}${c.dim(' · ')}${c.accent('/models')} ${c.dim(L('modelo', 'model'))}${c.dim(' · ')}${c.accent('/theme')} ${c.dim(L('tema', 'theme'))}`);
     const rows = Math.max(pet.length, info.length);
     const offPet = Math.max(0, Math.floor((rows - pet.length) / 2));

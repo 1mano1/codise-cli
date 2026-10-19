@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { toolsPrompt } from '../llm/textTools.js';
 import { detectShell, shellLabel } from '../tools/bash.js';
+import { formatActivity } from '../activity.js';
 
 const OUTPUT_STYLES = {
   normal: '',
@@ -28,6 +29,7 @@ const CORE_RULES = `# How to work
 - Follow the existing style, libraries and conventions of the project.
 - After changing code, verify it (run the tests, build or linter) when a command exists.
 - If a verification fails after an edit, Read the file again to see its CURRENT content before editing. Never repeat the same edit; when an edit does not help, change the approach.
+- Errors are normal. When a tool, command, build or test fails: read the error, investigate the cause (relevant files, logs, command output), fix it and continue until the task is done. Do not stop at the first error and do not ask the user unless you are truly blocked (missing information, credentials or a decision only they can make).
 - In Edit, old_string must be the exact text you want to REPLACE (it is removed), not just a nearby line.
 - Use only the tools provided, with valid JSON arguments. If a tool fails, read the error and adjust.
 - For tasks with several steps, keep a task list with TodoWrite and update it as you go.
@@ -62,6 +64,11 @@ export function buildSystemPrompt(runtime, { agent, tools, toolMode, model }) {
     const blocks = mem.map((m) => `## ${m.name} (${m.agent || 'Códice'}, ${m.scope === 'usuario' ? 'user' : 'project'}: ${m.file})\n${m.content.trim()}`).join('\n\n');
     parts.push(`# Project memory and instructions\nFollow these instructions; they override default behavior.\n\n${blocks}`);
   }
+  // Memoria entre sesiones: lo que se hizo recientemente en este proyecto (registro automático).
+  if (!agent.def && runtime.recentActivity?.length) {
+    parts.push(`# Recent activity in this project (previous sessions)\nUse it to understand what was already done. If the user asks to continue, pick up from here.\n${formatActivity(runtime.recentActivity)}`);
+  }
+  if (!agent.def) parts.push('When you learn a durable fact about the project or the user (commands, conventions, decisions, preferences), save it with the Remember tool so future sessions know it.');
   if (toolMode === 'prompt') parts.push(toolsPrompt(tools, { lean: runtime.isLean() }));
   return parts.filter(Boolean).join('\n\n');
 }
