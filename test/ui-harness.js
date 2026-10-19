@@ -96,6 +96,17 @@ key('', { name: 'escape' });
 await sleep(150);
 shots.panelCerrado = vt.viewport();
 
+// /sandbox: panel con estado y los tres modos (esc cierra sin cambiar)
+await type('/sandbox');
+await sleep(50);
+enter();
+await waitFor(() => vt.screen().includes('Automático'), 15000);
+await sleep(100);
+shots.sandbox = vt.viewport();
+key('', { name: 'escape' });
+await sleep(150);
+shots.sandboxCerrado = vt.viewport();
+
 // ventana más angosta: todo se vuelve a dibujar al nuevo ancho
 process.stdout.columns = 60;
 vt.cols = 60;

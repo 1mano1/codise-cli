@@ -17,6 +17,7 @@ import { stripThinking } from '../llm/stream.js';
 import { L } from '../i18n.js';
 import { customizeCommands } from './customize.js';
 import { usageTotals, providerBalance, BILLING_URLS } from '../usage.js';
+import { sandboxStatus, sandboxConfig, describeSandbox, SANDBOX_MODES } from '../sandbox.js';
 
 const fmtSize = (b) => (b ? `${(b / 1e9).toFixed(1)} GB` : '');
 
@@ -552,6 +553,51 @@ export const BUILTIN_COMMANDS = {
       for (const s of runtime.mcp.status()) (s.status === 'conectado' ? ok : bad)(`MCP ${s.name}${s.error ? ` (${s.error})` : ''}`);
       for (const w of runtime.themeWarnings || []) bad(`${L('Contraste del tema', 'Theme contrast')}: ${w}`, '/accessibility');
       ok(`${Object.keys(runtime.agents).length} ${L('agentes', 'agents')} · ${Object.keys(runtime.skills).length} skills · ${runtime.plugins.length} plugins`);
+    },
+  },
+
+  sandbox: {
+    get description() { return L('Sandbox de comandos: estado y modo (auto, strict, off)', 'Command sandbox: status and mode (auto, strict, off)'); },
+    argumentHint: '[auto|strict|off]',
+    async run(args, { runtime, repl }) {
+      const names = { auto: L('Automático', 'Automatic'), strict: L('Estricto', 'Strict'), off: L('Apagado', 'Off') };
+      const apply = (mode) => {
+        runtime.save('sandbox.mode', mode);
+        const st = sandboxStatus(runtime.settings);
+        if (mode === 'off') return ui.success(L('Sandbox apagado: los comandos vuelven a pedir permiso.', 'Sandbox off: commands ask for permission again.'));
+        if (!st.active) return ui.warn(L(`Modo ${names[mode]} guardado, pero el sandbox no está disponible: ${st.problem}.`, `${names[mode]} mode saved, but the sandbox is unavailable: ${st.problem}.`));
+        ui.success(L(`Sandbox ${names[mode].toLowerCase()} · ${describeSandbox(st)}`, `Sandbox ${names[mode].toLowerCase()} · ${describeSandbox(st)}`));
+      };
+      const arg = args.trim().toLowerCase();
+      const alias = { on: 'auto', activo: 'auto', automatico: 'auto', estricto: 'strict', apagado: 'off' };
+      if (arg) {
+        const mode = alias[arg] || arg;
+        if (!SANDBOX_MODES.includes(mode)) return ui.hint(L('Uso: /sandbox [auto|strict|off]', 'Usage: /sandbox [auto|strict|off]'));
+        return apply(mode);
+      }
+      const cur = sandboxConfig(runtime.settings);
+      const st = sandboxStatus({ ...runtime.settings, sandbox: { ...runtime.settings.sandbox, mode: cur.mode === 'off' ? 'auto' : cur.mode } });
+      const engineText = st.active ? c.success(`⛨ ${cur.mode === 'off' ? L('disponible', 'available') : L('activo', 'on')} · ${st.engine.label}`) : c.warning(`⛨ ${L('no disponible', 'unavailable')}: ${st.problem}`);
+      const pre = [
+        `${c.accent('/sandbox', { bold: true })}  ${engineText}`,
+        `${c.dim(L('escritura  ', 'write      '))}${c.primary(L('esta carpeta', 'this folder'))}${c.muted(L(' + carpeta temporal', ' + temp folder'))}${cur.allowWrite.length ? c.muted(` + ${cur.allowWrite.join(', ')}`) : ''}`,
+        `${c.dim(L('red        ', 'network    '))}${cur.allowedDomains.length ? `${c.primary(L('solo ', 'only '))}${c.info(cur.allowedDomains.join(', '))}` : c.primary(L('bloqueada', 'blocked'))}`,
+        '',
+      ];
+      const mode = await select(repl.input, {
+        pre,
+        options: [
+          { label: names.auto, value: 'auto', hint: L('dentro del sandbox; si algo se bloquea, te pregunta', 'inside the sandbox; asks you when something is blocked') },
+          { label: names.strict, value: 'strict', hint: L('nunca sale del sandbox (ideal con el modo sin permisos)', 'never leaves the sandbox (good with bypass mode)') },
+          { label: names.off, value: 'off', hint: L('como antes: solo el diálogo de permisos', 'as before: permission dialog only') },
+        ],
+        initial: Math.max(0, ['auto', 'strict', 'off'].indexOf(cur.mode)),
+        extra: () => [c.dim(L('Windows: Docker Desktop · macOS: sandbox-exec · Linux: bubblewrap', 'Windows: Docker Desktop · macOS: sandbox-exec · Linux: bubblewrap'))],
+        footer: L('↑↓ elegir · enter confirmar · esc cerrar', '↑↓ move · enter select · esc close'),
+        erase: true,
+        tone: 'accent/primary',
+      });
+      if (mode && mode !== cur.mode) apply(mode);
     },
   },
 

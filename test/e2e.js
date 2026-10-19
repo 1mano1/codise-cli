@@ -180,6 +180,55 @@ export async function e2eTests(t) {
       }
     });
 
+    await t('sandbox real: escribe en el proyecto, no fuera, y sin red (se omite si no hay motor)', async (assert) => {
+      const { detectEngine } = await import('../src/sandbox.js');
+      const { engine, problem } = detectEngine();
+      if (!engine) { console.log(`    (omitida: ${problem})`); return; }
+      const sbHome = path.join(work, '.home-sandbox');
+      const proj = path.join(work, 'proyecto-sandbox');
+      fs.mkdirSync(path.join(proj, '.git'), { recursive: true });
+      fs.mkdirSync(sbHome, { recursive: true });
+      fs.writeFileSync(path.join(sbHome, 'settings.json'), JSON.stringify({ onboarded: true, sandbox: { mode: 'strict' } }));
+      const tag = Math.random().toString(36).slice(2, 8);
+      const net = 'node -e "fetch(\'https://example.com\').then(r=>console.log(\'status\',r.status)).catch(e=>{console.error(String(e.cause&&e.cause.message||e.message));process.exit(1)})"';
+      m.push(
+        { toolCalls: [{ name: 'Bash', args: { command: 'echo hola > dentro.txt' } }] },
+        { toolCalls: [{ name: 'Bash', args: { command: `echo x > ../fuera-${tag}.txt` } }] },
+        { toolCalls: [{ name: 'Bash', args: { command: net } }] },
+        { content: 'Listo con sandbox.' },
+      );
+      const r = await runCli([...base, '-p', 'prueba el sandbox'], { cwd: proj, home: sbHome, timeout: 240000 });
+      assert(r.stdout.includes('Listo con sandbox.'), `terminó: ${r.stdout}${r.stderr}`);
+      assert(fs.existsSync(path.join(proj, 'dentro.txt')) && fs.readFileSync(path.join(proj, 'dentro.txt'), 'utf8').trim() === 'hola', `${engine.name}: escribe dentro del proyecto`);
+      assert(!fs.existsSync(path.join(work, `fuera-${tag}.txt`)), `${engine.name}: no escribe fuera del proyecto`);
+      const results = m.requests.at(-1).body.messages.filter((x) => x.role === 'tool').map((x) => String(x.content));
+      const netResult = results.at(-1) || '';
+      assert(!/status 200/.test(netResult) && /sandbox blocked network/.test(netResult), `${engine.name}: sin red y el modelo lo sabe: ${netResult}`);
+      if (engine.name === 'docker') { const { stopContainer } = await import('../src/sandbox.js'); await stopContainer(proj); }
+    });
+
+    await t('sandbox real: si el proxy bloquea un dominio, el diálogo permite agregarlo al proyecto', async (assert) => {
+      const { detectEngine } = await import('../src/sandbox.js');
+      const { engine, problem } = detectEngine();
+      if (!engine) { console.log(`    (omitida: ${problem})`); return; }
+      const sbHome = path.join(work, '.home-sandbox-auto');
+      const proj = path.join(work, 'proyecto-sandbox-auto');
+      fs.mkdirSync(path.join(proj, '.git'), { recursive: true });
+      fs.mkdirSync(sbHome, { recursive: true });
+      fs.writeFileSync(path.join(sbHome, 'settings.json'), JSON.stringify({ onboarded: true, sandbox: { mode: 'auto', allowedDomains: ['registry.npmjs.org'] } }));
+      m.push(
+        { toolCalls: [{ name: 'Bash', args: { command: 'npm view express version --registry https://registry.yarnpkg.com' } }] },
+        { content: 'Hecho.' },
+      );
+      const r = await runCli([...base], { cwd: proj, home: sbHome, input: 'consulta express\n1\n/exit\n', timeout: 240000 });
+      assert(/El sandbox bloqueó/.test(r.stdout) && r.stdout.includes('registry.yarnpkg.com'), `diálogo del sandbox: ${r.stdout.slice(-1500)}`);
+      const local = JSON.parse(fs.readFileSync(path.join(proj, '.codice', 'settings.local.json'), 'utf8'));
+      assert(local.sandbox?.allowedDomains?.includes('registry.yarnpkg.com'), `dominio guardado en el proyecto: ${JSON.stringify(local)}`);
+      const toolMsg = m.requests.at(-1).body.messages.filter((x) => x.role === 'tool').at(-1);
+      assert(String(toolMsg?.content).includes('allowed network access to registry.yarnpkg.com'), `el modelo sabe que se permitió: ${toolMsg?.content}`);
+      if (engine.name === 'docker') { const { stopContainer } = await import('../src/sandbox.js'); await stopContainer(proj); }
+    });
+
     await t('gzip: comprime las peticiones grandes y vuelve a texto plano si el servidor no lo acepta', async (assert) => {
       const { OpenAIClient } = await import('../src/llm/openai.js');
       const { wantsGzip, gzipRejected } = await import('../src/llm/compress.js');

@@ -83,6 +83,16 @@ export async function uiTests(t) {
     assert(closed.at(-1).includes('shift+tab') && closed.at(-2).startsWith('╰'), 'la caja vuelve a su lugar');
   });
 
+  await t('consola v3: /sandbox muestra estado y modos, y esc cierra sin cambiar', async (assert) => {
+    const s = shots.sandbox || [];
+    assert(s.some((l) => l.includes('/sandbox') && l.includes('⛨')), `estado del sandbox: ${s.join('\n')}`);
+    assert(['Automático', 'Estricto', 'Apagado'].every((m) => s.some((l) => l.includes(m))), 'los tres modos');
+    assert(s.some((l) => l.includes('escritura')) && s.some((l) => l.includes('red')), 'qué se permite');
+    const closed = shots.sandboxCerrado || [];
+    assert(!closed.some((l) => l.includes('Estricto')) && closed.at(-1).includes('shift+tab'), 'al cerrar desaparece y la caja sigue abajo');
+    assert(!closed.at(-1).includes('⛨ sandbox'), 'no se activó al cerrar con esc');
+  });
+
   await t('consola v2: el texto aparece mientras llega (no de golpe)', async (assert) => {
     assert(shots.streaming.includes('Este es un') && !shots.streaming.includes('fluida.'), 'se ve el texto a medias mientras llega');
     assert(shots.streamFin.includes('se ve fluida.'), 'el texto termina completo');

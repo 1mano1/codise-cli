@@ -62,7 +62,7 @@ export const DEFAULTS = {
   agentModels: {},
 };
 
-const CONCAT_KEYS = new Set(['allow', 'deny']);
+const CONCAT_KEYS = new Set(['allow', 'deny', 'allowedDomains', 'allowWrite']);
 
 function isPlainObject(v) {
   return v && typeof v === 'object' && !Array.isArray(v);

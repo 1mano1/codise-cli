@@ -2,6 +2,7 @@
 import { wildcardMatch } from './util/glob.js';
 import { saveSetting } from './config.js';
 import { L } from './i18n.js';
+import { sandboxStatus } from './sandbox.js';
 
 export const MODES = ['default', 'acceptEdits', 'plan', 'bypass'];
 
@@ -67,6 +68,11 @@ export class Permissions {
     if (tool.readOnly) return { allowed: true };
     if (allow.some((r) => matchRule(r, tool.name, key))) return { allowed: true };
     if (mode === 'bypass') return { allowed: true };
+    // dentro del sandbox el comando no puede dañar el equipo: no hace falta preguntar
+    if (tool.sandboxable) {
+      const st = sandboxStatus(this.runtime.settings);
+      if (st.active && st.autoAllow) return { allowed: true, sandboxed: true };
+    }
     if (mode === 'acceptEdits' && tool.edits) return { allowed: true };
     const ui = ctx.ui;
     if (!ui?.interactive) return { allowed: false, reason: L(`Se necesita permiso para ${tool.name}. Ejecuta con --yolo o añade "${suggestRule(tool, key)}" a permissions.allow.`, `Permission needed for ${tool.name}. Run with --yolo or add "${suggestRule(tool, key)}" to permissions.allow.`) };

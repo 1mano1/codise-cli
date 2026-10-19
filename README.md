@@ -120,6 +120,7 @@ Las herramientas (archivos, Bash) se ejecutan en la laptop; solo la inferencia v
 | `/resume`, `/rewind`, `/clear` | Sesiones y puntos de control |
 | `/theme`, `/mascot`, `/config`, `/accessibility` | Personalización |
 | `/bench`, `/connect` | Rendimiento y PC remota |
+| `/sandbox` | Sandbox de comandos: estado y modo |
 | `/cost`, `/usage`, `/doctor`, `/status` | Uso, consumo y saldo por proveedor, diagnóstico |
 
 **Atajos**: `!cmd` ejecuta en el shell · `#nota` guarda en memoria · `@ruta` adjunta un archivo · `\` + enter nueva línea · `esc` interrumpe · `ctrl+o` salida completa · `ctrl+c` ×2 salir.
@@ -159,6 +160,22 @@ Asigna un modelo distinto a cualquier agente: `codice config set agentModels.exp
 ```
 
 Por compatibilidad, Códice también lee `CLAUDE.md`, `AGENTS.md` y las carpetas `.claude/` (desactívalo con `compat.claude: false`).
+
+## Sandbox
+
+Con `/sandbox` los comandos del agente corren encerrados: solo pueden escribir en la carpeta del proyecto (y una carpeta temporal propia) y no tienen internet. Dentro del sandbox no piden permiso, porque no pueden dañar tu equipo.
+
+| Modo | Qué hace |
+| --- | --- |
+| Automático | Todo corre dentro; si algo se bloquea (red o escritura fuera), Códice pregunta: permitir ese dominio en el proyecto, ejecutarlo fuera una vez o decirle qué hacer. |
+| Estricto | Nunca sale del sandbox. Ideal junto con el modo sin permisos. |
+| Apagado | Como antes: solo el diálogo de permisos. |
+
+Motores: **bubblewrap** en Linux (`sudo apt install bubblewrap`), **sandbox-exec** en macOS (incluido) y **Docker Desktop** en Windows (contenedor Linux con el proyecto en `/workspace`). Los dominios permitidos pasan por un proxy local que filtra; lo respetan npm, pip, git, curl y la mayoría de herramientas.
+
+```json
+{ "sandbox": { "mode": "auto", "allowedDomains": ["registry.npmjs.org"], "allowWrite": [], "image": "node:22-bookworm-slim" } }
+```
 
 ## Personalización
 

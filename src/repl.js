@@ -8,6 +8,7 @@ import { Input } from './ui/input.js';
 import { BoxInput } from './ui/editor.js';
 import { select, showPanel } from './ui/select.js';
 import { liveActive } from './ui/live.js';
+import { sandboxStatus, describeSandbox } from './sandbox.js';
 import { createUI } from './ui/bridge.js';
 import { Agent } from './agent/agent.js';
 import { BUILTIN_COMMANDS } from './commands/builtin.js';
@@ -122,7 +123,9 @@ class Repl {
   async welcome() {
     const rt = this.runtime;
     if (!rt.settings.onboarded && this.input.tty) await runOnboarding(rt, this.input);
+    const sb = sandboxStatus(rt.settings);
     ui.banner({
+      sandbox: sb.mode === 'off' ? null : { text: describeSandbox(sb), ok: sb.active },
       version: VERSION,
       model: rt.settings.model,
       provider: rt.providerInfo()?.label || rt.settings.provider,

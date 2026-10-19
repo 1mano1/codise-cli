@@ -52,6 +52,30 @@ export function createUI({ input = null, spinner = null } = {}) {
     return { choice: 'no', feedback: (feedback || '').trim() };
   }
 
+  // El sandbox bloqueó un comando (diseño v3 · F): explica qué y por qué, y ofrece permitirlo o salir una vez.
+  async function sandboxBlocked({ command, block, agentLabel }) {
+    pause();
+    const pre = [];
+    const who = agentLabel ? c.agent(` · ${agentLabel}`) : '';
+    pre.push(`${c.warning(L('⛨ El sandbox bloqueó · ', '⛨ The sandbox blocked · '), { bold: true })}${style('Bash', { bold: true, fg: 'text/primary' })}${who}`);
+    wrap(command, Math.max(20, width() - 6)).forEach((l, i) => pre.push(`  ${c.dim(i ? ' ' : '$')} ${style(l, { bold: true, fg: 'text/primary' })}`));
+    if (block.kind === 'network') {
+      pre.push(`  ${c.muted(L('Sin red: no pudo conectar con ', 'No network: could not connect to '))}${block.host ? c.info(block.host) : c.muted(L('internet', 'the internet'))}${c.dim(L('  (el sandbox no tiene internet)', '  (the sandbox has no internet)'))}`);
+    } else {
+      pre.push(`  ${c.muted(L('Solo puede escribir en la carpeta del proyecto', 'It can only write inside the project folder'))}${block.path ? c.dim(` · ${block.path}`) : ''}`);
+    }
+    pre.push('');
+    const options = [];
+    if (block.kind === 'network' && block.host) options.push({ label: L(`Permitir red a ${block.host} en este proyecto`, `Allow network to ${block.host} in this project`), value: 'allow' });
+    options.push({ label: L('Ejecutar fuera del sandbox solo esta vez', 'Run outside the sandbox just this once'), value: 'outside' });
+    options.push({ label: L('No, y decirle qué hacer diferente', 'No, and tell it what to do instead'), value: 'no', hint: '(esc)', hintColor: 'status/info' });
+    const choice = await select(input, { pre, options, footer: L('↑↓ elegir · enter confirmar · esc = no', '↑↓ move · enter select · esc = no'), erase: true, tone: 'status/warning' });
+    if (choice === 'allow' || choice === 'outside') return { choice };
+    ensureNewline();
+    const feedback = await input.question(`${c.accent('›', { bold: true })} ${c.muted(L('¿Qué debería hacer en su lugar? (enter para omitir) ', 'What should it do instead? (enter to skip) '))}`);
+    return { choice: 'no', feedback: (feedback || '').trim() };
+  }
+
   // UI para una ejecución concreta de herramienta: los diffs y tareas se imprimen tras el resultado.
   function forTool(deferred) {
     return {
@@ -62,6 +86,7 @@ export function createUI({ input = null, spinner = null } = {}) {
       select: async (o) => { pause(); return select(input, o); },
       question: async (q) => { pause(); return input ? input.question(`${c.accent('›', { bold: true })} ${q}`) : ''; },
       permission,
+      sandboxBlocked,
     };
   }
 

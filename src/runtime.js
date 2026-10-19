@@ -19,6 +19,7 @@ import { formatTokens, formatDuration } from './util/fs.js';
 import { setLanguage, L } from './i18n.js';
 import { localEngine } from './local/engine.js';
 import { recordUsage, estimateCost } from './usage.js';
+import { sandboxStatus } from './sandbox.js';
 
 export class Runtime {
   constructor({ cwd = process.cwd(), overrides = {} } = {}) {
@@ -232,8 +233,11 @@ export class Runtime {
     const mcpOk = this.mcp.status().filter((s) => s.status === 'conectado').length;
     if (mcpOk) parts.push(`${mcpOk} MCP`);
     const cols = (process.stdout.columns || 80) - 1;
-    while (parts.length > 1 && 2 + visibleWidth(mode) + 3 + visibleWidth(parts.join(' · ')) > cols) parts.pop();
-    const right = c.dim(parts.join(' · '));
+    const sb = this.settings.sandbox?.mode && this.settings.sandbox.mode !== 'off' ? sandboxStatus(this.settings) : null;
+    const sbText = sb ? (sb.active ? c.success('⛨ sandbox') : c.warning(L('⛨ sandbox no disponible', '⛨ sandbox unavailable'))) : '';
+    const sbW = sbText ? visibleWidth(sbText) + 3 : 0;
+    while (parts.length > 1 && 2 + visibleWidth(mode) + 3 + sbW + visibleWidth(parts.join(' · ')) > cols) parts.pop();
+    const right = `${sbText}${sbText ? c.dim(' · ') : ''}${c.dim(parts.join(' · '))}`;
     const gap = cols - 2 - visibleWidth(mode) - visibleWidth(right);
     return gap >= 3 ? `  ${mode}${' '.repeat(gap)}${right}` : `  ${mode}`;
   }
