@@ -365,6 +365,18 @@ export async function unitTests(t) {
     assert(!validateMascot(n) && n.pixels.join('|') === '..bb.|.bbbb|.....|bb...', `normalizada: ${n.pixels.join('|')}`);
   });
 
+  await t('errores: servidor remoto apagado, inalcanzable o cortado se explican distinto', async (assert) => {
+    const { describeError } = await import('../src/repl.js');
+    const { LLMError } = await import('../src/llm/openai.js');
+    const rt = { settings: { provider: 'pc', model: 'q' }, providerInfo: () => ({ type: 'openai', baseUrl: 'http://192.168.1.69:8081/v1', label: 'PC' }) };
+    const d = (m) => describeError(new LLMError(m, { network: true }), rt);
+    assert(/no está encendido/.test(d('x (ECONNREFUSED)')[0]) && /siguen guardadas/.test(d('x (ECONNREFUSED)')[2]), 'programa cerrado');
+    assert(/No llego a la computadora/.test(d('x (ETIMEDOUT)')[0]), 'computadora inalcanzable');
+    assert(/a mitad de la respuesta/.test(d('x (terminated)')[0]), 'conexión cortada');
+    const local = { ...rt, providerInfo: () => ({ type: 'openai', baseUrl: 'http://localhost:1234/v1', label: 'LM Studio' }) };
+    assert(/No pude conectar con LM Studio/.test(describeError(new LLMError('x (ECONNREFUSED)', { network: true }), local)[0]), 'local: mensaje de siempre');
+  });
+
   await t('compactación: la transcripción respeta el presupuesto', async (assert) => {
     const { transcript, keepFromIndex } = await import('../src/agent/compact.js');
     const msgs = [{ role: 'user', content: 'objetivo inicial' }];
