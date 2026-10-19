@@ -475,3 +475,13 @@ conversación: llama-server respondía 500 en cada petición que la incluyera y 
 
 Sesión rota manualmente: `/resume` la repara; o empieza una nueva con `/exit` y reabrir, o borra el último mensaje
 con `/rewind`.
+
+## Comandos en vivo mientras el agente trabaja (rama `fix/live-commands`)
+
+- Antes, cualquier cosa escrita mientras el agente trabajaba se encolaba (incluidos /mascot, /theme…), y parecía
+  que no funcionaban. Ahora los comandos marcados `live: true` se ejecutan al momento; el resto sigue a la cola.
+- `live: true` en los comandos que no tocan al modelo ni la conversación: help, tools, skills, commands, context,
+  cost, usage, todos, status, doctor, version, memory, mascot, theme, config, accessibility.
+- `BoxInput` separa `working` (el agente trabaja) del estado de foco (`idle/prompt/modal/ask`), para que al
+  terminar el agente no se pise un diálogo abierto. `command(text, { live })` no toca `setBusy` en modo live;
+  `runLiveCommand` evita reentrancia. Placeholder de ocupado: "/comandos corren ya".

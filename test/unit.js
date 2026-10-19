@@ -377,6 +377,31 @@ export async function unitTests(t) {
     assert(/No pude conectar con LM Studio/.test(describeError(new LLMError('x (ECONNREFUSED)', { network: true }), local)[0]), 'local: mensaje de siempre');
   });
 
+  await t('caja: mientras el agente trabaja, los comandos locales corren y los mensajes se encolan', async (assert) => {
+    const { BoxInput } = await import('../src/ui/editor.js');
+    const live = [];
+    const box = new BoxInput({ historyFile: path.join(tmp(), 'h'), onLiveCommand: (t) => live.push(t), isLiveCommand: (n) => ['help', 'mascot', 'theme'].includes(n) });
+    box.setBusy(true);
+    assert(box.working === true && box.state === 'busy', 'ocupado');
+    // comando local: se ejecuta al momento, no se encola
+    box.buffer = '/mascot'; box.cursor = box.buffer.length; box.submit();
+    assert(live.length === 1 && live[0] === '/mascot' && box.queued == null, 'comando local corre en vivo');
+    // mensaje normal: se encola
+    box.buffer = 'hola agente'; box.cursor = box.buffer.length; box.submit();
+    assert(box.queued === 'hola agente' && live.length === 1, 'mensaje normal a la cola');
+    // comando no-local (p. ej. /compact no está en la lista): se encola
+    box.buffer = '/compact'; box.cursor = box.buffer.length; box.submit();
+    assert(box.queued === '/compact', 'comando no-local a la cola');
+    // un diálogo abierto no se pisa cuando el agente termina
+    const release = box.modal(() => {});
+    assert(box.state === 'modal', 'diálogo abierto');
+    box.setBusy(false); // el agente terminó mientras el diálogo seguía abierto
+    assert(box.state === 'modal' && box.working === false, 'el diálogo no se pierde al terminar el agente');
+    box.pending = () => {}; // el bucle pidió la siguiente entrada
+    release();
+    assert(box.state === 'prompt', 'al cerrar el diálogo se pasa a escribir');
+  });
+
   await t('compactación: la transcripción respeta el presupuesto', async (assert) => {
     const { transcript, keepFromIndex } = await import('../src/agent/compact.js');
     const msgs = [{ role: 'user', content: 'objetivo inicial' }];

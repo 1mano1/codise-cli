@@ -12,8 +12,8 @@ const MAX_HISTORY = 500;
 const MAX_ROWS = 8;
 
 export class BoxInput {
-  constructor({ historyFile, getCommands = () => [], getStatus = () => '', onModeCycle, onInterrupt, onExpand, onExit } = {}) {
-    Object.assign(this, { historyFile, getCommands, getStatus, onModeCycle, onInterrupt, onExpand, onExit });
+  constructor({ historyFile, getCommands = () => [], getStatus = () => '', onModeCycle, onInterrupt, onExpand, onExit, onLiveCommand, isLiveCommand } = {}) {
+    Object.assign(this, { historyFile, getCommands, getStatus, onModeCycle, onInterrupt, onExpand, onExit, onLiveCommand, isLiveCommand });
     this.tty = true;
     this.box = true;
     this.state = 'idle'; // idle | prompt | busy | modal | ask
@@ -76,9 +76,9 @@ export class BoxInput {
       this.echo(q);
       return Promise.resolve(q);
     }
-    this.state = 'prompt';
-    this.palette.dismissed = false;
-    drawLive();
+    // si hay un diálogo abierto (comando lanzado mientras el agente trabajaba), se registra la lectura sin
+    // quitarle el foco al diálogo; al cerrarse pasará a escribir
+    if (this.state !== 'modal') { this.state = 'prompt'; this.palette.dismissed = false; drawLive(); }
     return new Promise((resolve) => { this.pending = resolve; });
   }
 
@@ -108,8 +108,10 @@ export class BoxInput {
     });
   }
 
+  // working = el agente trabaja (independiente del foco de la caja, para no pisar un diálogo abierto mientras tanto)
   setBusy(b) {
-    this.state = b ? 'busy' : 'idle';
+    this.working = b;
+    if (this.state !== 'modal' && this.state !== 'ask') this.state = b ? 'busy' : (this.pending ? 'prompt' : 'idle');
     drawLive();
   }
 
@@ -119,7 +121,9 @@ export class BoxInput {
     this.state = 'modal';
     return () => {
       this.modalHandler = null;
-      this.state = prev === 'modal' ? 'idle' : prev;
+      // al cerrar: si ya hay una lectura pendiente (el agente terminó mientras tanto) se pasa a escribir; si el
+      // agente sigue trabajando, se vuelve a "ocupado"; si no, a inactivo
+      this.state = this.pending ? 'prompt' : this.working ? 'busy' : (prev === 'modal' ? 'idle' : prev);
       drawLive();
     };
   }
@@ -303,7 +307,13 @@ export class BoxInput {
     this.cursor = 0;
     this.histIndex = -1;
     this.saveHistory(text);
-    if (this.state === 'busy') { this.queued = text; return drawLive(); }
+    if (this.state === 'busy') {
+      // comandos que no tocan al modelo (p. ej. /mascot, /theme, /config) se ejecutan al momento aunque el agente
+      // siga trabajando; el resto se manda a la cola y se envía cuando termine
+      if (text.startsWith('/') && this.isLiveCommand?.(text.slice(1).split(/\s+/)[0].toLowerCase())) { this.onLiveCommand?.(text); return drawLive(); }
+      this.queued = text;
+      return drawLive();
+    }
     if (this.state !== 'prompt' || !this.pending) return drawLive();
     const resolve = this.pending;
     this.pending = null;
@@ -359,7 +369,7 @@ export class BoxInput {
     let placeholder = '';
     if (empty) {
       if (this.asking) placeholder = L('Escribe tu respuesta y pulsa enter', 'Type your answer and press enter');
-      else if (this.state === 'busy') placeholder = L('Escribe tu siguiente mensaje (se envía al terminar)', 'Type your next message (sent when done)');
+      else if (this.state === 'busy') placeholder = L('Tu mensaje se envía al terminar · /comandos corren ya', 'Your message is sent when done · /commands run now');
       else if (dim) placeholder = L('Responde arriba para continuar', 'Answer above to continue');
       else placeholder = L('Escribe una tarea, / para comandos, @ para archivos', 'Type a task, / for commands, @ for files');
     }
