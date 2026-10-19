@@ -397,6 +397,19 @@ export async function startRepl(runtime, { session, initialPrompt = null } = {})
   runtime.sessionId = session.id;
   // memoria entre sesiones: lo último que se hizo en este proyecto en otras sesiones
   runtime.recentActivity = readActivity(runtime.projectRoot, { limit: 10, excludeSession: session.id });
+  // red de seguridad: un error asíncrono (p. ej. un comando lanzado mientras el agente trabaja) no debe tumbar la
+  // sesión; se muestra y se guarda la conversación en vez de cerrar el proceso
+  const onFatal = (label) => (err) => {
+    if (repl?.exiting) return;
+    try { runtime.spinner.stop(); } catch { /* sin spinner */ }
+    try { repl?.session?.save(); } catch { /* sin disco */ }
+    try { ui.errorBox(L('Ocurrió un error inesperado, pero tu conversación está guardada', 'An unexpected error happened, but your conversation is saved'), `${label}: ${err?.message || err}`, L('Puedes seguir escribiendo. Si algo quedó raro, usa /rewind o reinicia con codice --continue.', 'You can keep typing. If something looks off, use /rewind or restart with codice --continue.')); } catch { /* sin UI */ }
+    if (process.env.CODICE_DEBUG) try { console.error(err?.stack || String(err)); } catch { /* ignore */ }
+    try { repl?.input?.refreshBelow?.(); } catch { /* ignore */ }
+  };
+  process.on('unhandledRejection', onFatal('promesa'));
+  process.on('uncaughtException', onFatal('excepción'));
+
   const start = await runtime.hook('SessionStart', { source: session.messages.length ? 'resume' : 'startup' });
   if (start.context) repl.pendingContext += `\n<session-context>\n${start.context}\n</session-context>`;
   await repl.welcome();
