@@ -45,6 +45,7 @@ startRepl(runtime, { session: new Session({ cwd: proj }) });
 await waitFor(() => vt.screen().includes('╰'));
 await sleep(100);
 shots.inicio = vt.screen();
+shots.inicioView = vt.viewport();
 
 await type('/mo');
 await sleep(80);
@@ -71,6 +72,7 @@ key('1', { name: '1' });
 await waitFor(() => vt.screen().includes('Listo: creé memory.js.'));
 await sleep(150);
 shots.final = vt.screen();
+shots.finalView = vt.viewport();
 shots.cursor = vt.cursor();
 
 // texto que llega poco a poco: debe verse a medias mientras llega
@@ -81,6 +83,18 @@ shots.streaming = vt.screen();
 await waitFor(() => vt.screen().includes('fluida.'), 15000);
 await sleep(200);
 shots.streamFin = vt.screen();
+shots.streamFinView = vt.viewport();
+
+// comandos informativos: panel encima de la caja que se cierra con esc y no queda en la conversación
+await type('/usage');
+await sleep(50);
+enter();
+await waitFor(() => vt.screen().includes('esc cerrar'));
+await sleep(100);
+shots.panel = vt.viewport();
+key('', { name: 'escape' });
+await sleep(150);
+shots.panelCerrado = vt.viewport();
 
 // ventana más angosta: todo se vuelve a dibujar al nuevo ancho
 process.stdout.columns = 60;
@@ -88,6 +102,7 @@ vt.cols = 60;
 process.stdout.emit('resize');
 await sleep(400);
 shots.angosta = vt.screen();
+shots.angostaView = vt.viewport();
 
 await m.close();
 // esperar a que la salida se escriba completa (en macOS las tuberías son asíncronas)

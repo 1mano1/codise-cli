@@ -364,3 +364,14 @@ Problemas reportados al probarla y solución:
   `CODICE_GZIP=0` lo apaga. Si un servidor responde 400/415/422 al cuerpo comprimido, se reenvía sin comprimir y
   se recuerda para ese servidor durante la ejecución.
 - `codice serve` descomprime el cuerpo antes de pasarlo a Ollama/llama.cpp (que no aceptan gzip).
+## Diseño de la consola: bienvenida arriba, caja abajo, paneles (rama `fix/console-layout`)
+
+- `live.js` lleva `contentRow` (renglón donde termina la conversación). La conversación crece desde arriba y la
+  caja + barra de estado van en los últimos renglones; entre ambas hay un hueco en blanco dentro de la zona viva.
+  El texto en curso y el spinner van pegados a la conversación; los diálogos, pegados a la caja.
+- Arreglo: al encogerse la zona (se cierra un diálogo, la caja pierde líneas) la caja ya no se sube; antes solo se
+  corregía al redimensionar.
+- Comandos informativos (`panel: true`: help, usage, cost, context, status, doctor, tools, skills, commands, todos)
+  se muestran en un panel encima de la caja (`showPanel` en `select.js`, salida capturada con `captureOutput`);
+  esc lo cierra y no queda en la conversación; ↑↓/PgUp/PgDn desplazan. Con lector de pantalla se imprimen.
+- La terminal virtual de pruebas (`test/fixtures/vt.js`) ahora tiene ventana visible e historial (`viewport()`).

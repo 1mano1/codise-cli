@@ -1,4 +1,6 @@
-// Zona viva al pie de la terminal: [texto en curso] + [spinner] + [diálogo] + caja de entrada + barra de estado.
+// Zona viva: [texto en curso] + [spinner] + [hueco] + [diálogo] + caja de entrada + barra de estado.
+// La conversación crece desde arriba y la caja de entrada con la barra de estado quedan siempre al pie; entre ambas
+// hay un hueco en blanco que se va llenando (contentRow = renglón donde termina la conversación en pantalla).
 // Todo lo que se imprime va ENCIMA de esta zona. Para que no parpadee:
 //  - cada cuadro se escribe de una sola vez, dentro de "salida sincronizada" (DEC 2026) y con el cursor oculto;
 //  - los renglones se SOBRESCRIBEN (\x1b[K al final) en lugar de borrar la zona y volver a dibujarla.
@@ -18,7 +20,10 @@ const live = {
   spinner: null,
   overlay: null,
   stream: null, // renglones del texto que el modelo está escribiendo (aún sin terminar)
+  contentRow: null, // null = sin hueco (la zona va justo debajo del texto)
 };
+
+const screenRows = () => process.stdout.rows || 24;
 
 const out = () => process.stdout;
 
@@ -43,19 +48,27 @@ export function setOverlay(lines) { live.overlay = lines; }
 export function hasOverlay() { return Boolean(live.overlay); }
 export function setStreamLines(lines) { live.stream = lines && lines.length ? lines : null; }
 
-// Empuja la zona viva al fondo de la pantalla: la caja de escritura siempre va abajo y la conversación crece
-// hacia arriba (como en un chat).
-export function anchorBottom() {
-  const rows = out().rows || 24;
-  out().write('\n'.repeat(Math.max(0, rows - 1)));
+// La conversación empieza arriba y la caja de escritura queda abajo. scroll: sube lo que había en pantalla al
+// historial de la terminal (sin borrarlo) para empezar con la pantalla limpia.
+export function anchorBottom({ scroll = false } = {}) {
+  if (scroll) out().write(`${'\n'.repeat(screenRows())}\x1b[H\x1b[J`);
   live.rows = 0;
   live.cursorRow = 0;
+  live.contentRow = 0;
+}
+
+// Renglones que ocupa un texto en pantalla (los renglones largos se parten al ancho de la terminal).
+export function visualRows(text) {
+  const cols = Math.max(1, out().columns || 80);
+  const lines = text.split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  return lines.reduce((n, l) => n + Math.max(1, Math.ceil(visibleWidth(l.replace(/\r/g, '')) / cols)), 0);
 }
 
 export function startLive(renderer) {
   live.renderer = renderer;
   live.active = true;
-  if (out().isTTY) anchorBottom();
+  if (out().isTTY) anchorBottom({ scroll: true });
   drawLive();
 }
 
@@ -74,11 +87,15 @@ function toTop() {
 // Construye el cuadro completo (sin escribirlo).
 function frame() {
   const width = Math.max(20, (out().columns || 80) - 1);
-  const pre = [];
-  if (live.stream) pre.push(...live.stream);
-  if (live.spinner) pre.push(live.spinner());
-  if (live.overlay) pre.push(...live.overlay);
+  const top = [];
+  if (live.stream) top.push(...live.stream);
+  if (live.spinner) top.push(live.spinner());
+  const mid = live.overlay || [];
   const r = live.renderer({ dim: Boolean(live.overlay) });
+  const minRows = top.length + mid.length + r.lines.length;
+  // hueco entre la conversación y la caja, para que la caja quede siempre en el último renglón
+  const gap = live.contentRow == null ? 0 : Math.max(0, screenRows() - live.contentRow - minRows);
+  const pre = [...top, ...Array(gap).fill(''), ...mid];
   const lines = [...pre, ...r.lines].map((l) => fitLine(l, width));
   let seq = lines.map((l) => `${l}\x1b[0m\x1b[K`).join('\n');
   seq += '\x1b[J'; // limpia lo que sobre si la zona se encogió
@@ -87,7 +104,7 @@ function frame() {
   if (up > 0) seq += `\x1b[${up}A`;
   seq += '\r';
   if (r.cursor?.col > 0) seq += `\x1b[${r.cursor.col}C`;
-  return { seq, rows: lines.length, cursorRow: target, showCursor: Boolean(r.cursor) };
+  return { seq, rows: lines.length, minRows, cursorRow: target, showCursor: Boolean(r.cursor) };
 }
 
 function commit(prefix, f) {
@@ -95,6 +112,8 @@ function commit(prefix, f) {
   live.rows = f.rows;
   live.cursorRow = f.cursorRow;
   live.cursorVisible = f.showCursor;
+  // si la zona no cabía, la terminal desplazó la conversación hacia arriba
+  if (live.contentRow != null) live.contentRow = Math.max(0, Math.min(live.contentRow, screenRows() - f.minRows));
 }
 
 export function drawLive() {
@@ -113,12 +132,14 @@ export function eraseLive() {
 export function resetLive() {
   live.rows = 0;
   live.cursorRow = 0;
+  live.contentRow = null;
 }
 
 // Escribe texto encima de la zona viva, todo en un solo cuadro.
 export function writeAbove(text) {
   const body = text.endsWith('\n') ? text : `${text}\n`;
   if (!live.active || !live.renderer) { out().write(body); return; }
+  if (live.contentRow != null) live.contentRow = Math.min(live.contentRow + visualRows(body), screenRows() - 1);
   commit(`${toTop()}\x1b[J${body}`, frame());
 }
 

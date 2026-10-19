@@ -102,6 +102,55 @@ export async function select(input, { title, options, initial = 0, footer, extra
   });
 }
 
+// Panel informativo encima de la caja (p. ej. /usage): no queda en la conversación; esc lo cierra y ↑↓ desplaza.
+export async function showPanel(input, { title, text, tone = 'accent/primary' }) {
+  const body = String(text).replace(/\n+$/, '').split('\n');
+  if (!body.some((l) => l.trim())) return;
+  let first = 0;
+  const render = () => {
+    const W = Math.max(24, (process.stdout.columns || 80) - 1);
+    const inner = W - 4;
+    const room = Math.max(3, (process.stdout.rows || 30) - 9);
+    const max = Math.max(0, body.length - room);
+    first = Math.max(0, Math.min(first, max));
+    const shown = body.slice(first, first + room);
+    const b = (s) => style(s, { fg: tone });
+    const row = (l) => { const f = fit(l, inner); return `${b('│')} ${f}${' '.repeat(Math.max(0, inner - visibleWidth(f)))} ${b('│')}`; };
+    const label = ` ${title} `;
+    const more = max ? `  ${first > 0 ? '↑' : ' '}${first < max ? '↓' : ' '} ${first + 1}-${first + shown.length}/${body.length}` : '';
+    setOverlay([
+      `${b('╭─')}${style(label, { fg: 'accent/primary', bold: true })}${b(`${'─'.repeat(Math.max(0, W - 3 - visibleWidth(label)))}╮`)}`,
+      ...shown.map(row),
+      row(''),
+      row(c.dim(`${L('esc cerrar', 'esc close')}${max ? L(' · ↑↓ desplazar', ' · ↑↓ scroll') : ''}${more}`)),
+      b(`╰${'─'.repeat(W - 2)}╯`),
+    ]);
+    drawLive();
+  };
+  return new Promise((resolve) => {
+    const release = input.modal((s, key = {}) => {
+      const n = key.name;
+      const page = Math.max(3, (process.stdout.rows || 30) - 10);
+      if (n === 'escape' || n === 'return' || n === 'enter' || n === 'q' || (key.ctrl && n === 'c')) {
+        setOverlay(null);
+        release();
+        drawLive();
+        resolve();
+        return;
+      }
+      if (n === 'up' || n === 'k') first--;
+      else if (n === 'down' || n === 'j') first++;
+      else if (n === 'pageup') first -= page;
+      else if (n === 'pagedown' || n === 'space') first += page;
+      else if (n === 'home') first = 0;
+      else if (n === 'end') first = body.length;
+      else return;
+      render();
+    });
+    render();
+  });
+}
+
 async function selectByNumber(input, { title, options }) {
   ensureNewline();
   if (!input) return null;

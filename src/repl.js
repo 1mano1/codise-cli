@@ -6,7 +6,8 @@ import { c } from './ui/theme.js';
 import * as ui from './ui/output.js';
 import { Input } from './ui/input.js';
 import { BoxInput } from './ui/editor.js';
-import { select } from './ui/select.js';
+import { select, showPanel } from './ui/select.js';
+import { liveActive } from './ui/live.js';
 import { createUI } from './ui/bridge.js';
 import { Agent } from './agent/agent.js';
 import { BUILTIN_COMMANDS } from './commands/builtin.js';
@@ -181,7 +182,13 @@ class Repl {
     const builtin = BUILTIN_COMMANDS[name] || Object.values(BUILTIN_COMMANDS).find((cmd) => cmd.aliases?.includes(name));
     if (builtin) {
       this.input.setBusy(true);
-      try { await builtin.run(args, ctx); } finally { this.input.setBusy(false); }
+      try {
+        // los comandos informativos se muestran en un panel que se cierra con esc (no ensucian la conversación)
+        if (builtin.panel && liveActive() && this.input.modal && !ui.isScreenReader()) {
+          const text = await ui.captureOutput(() => builtin.run(args, ctx));
+          await showPanel(this.input, { title: `/${name}`, text });
+        } else await builtin.run(args, ctx);
+      } finally { this.input.setBusy(false); }
       return;
     }
     const custom = this.runtime.commands[rawName];
