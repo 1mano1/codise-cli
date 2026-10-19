@@ -93,6 +93,21 @@ export async function runShell(command, { cwd, timeout = 120000, signal, shell, 
   });
 }
 
+// ¿El comando falló por falta de permisos de administrador en Windows?
+export function needsElevation(output) {
+  return /admin(?:istrator|istrative)? (?:rights|privileges|access|permissions)|requires? (?:elevation|administrator)|run as administrator|must be run (?:as|with|from an) (?:administrator|elevated)|elevated (?:privileges|permissions|command prompt|powershell)|Access (?:is|to the path).*denied|Access denied|Acceso denegado|permisos? de administrador|se requiere.*administrador|ejec[úu]te?lo como administrador|UnauthorizedAccessException|error 740|The requested operation requires elevation/i.test(String(output || ''));
+}
+
+// Convierte un comando de la herramienta Bash a algo que el usuario pueda pegar en PowerShell como Administrador.
+// (El agente corre en Git Bash; el usuario abre "PowerShell (Administrador)".)
+export function elevatedHint(command) {
+  const cmd = String(command).trim();
+  return L(
+    `Este comando necesita permisos de administrador. Ábrelo tú: pulsa Win, escribe "PowerShell", haz clic derecho → "Ejecutar como administrador" y pega:\n  ${cmd}`,
+    `This command needs administrator rights. Run it yourself: press Win, type "PowerShell", right-click → "Run as administrator" and paste:\n  ${cmd}`,
+  );
+}
+
 // La línea más informativa de una salida con error (no "Node.js v22…" ni líneas vacías).
 export function errorLine(lines) {
   const useful = lines.map((l) => l.trim()).filter((l) => l && !/^Node\.js v\d/.test(l) && !/^at /.test(l) && l !== '^');
@@ -158,10 +173,19 @@ export const Bash = {
     if (r.killed === 'abort') throw Object.assign(new Error(L('Interrumpido por el usuario', 'Interrupted by the user')), { name: 'AbortError' });
     let out = truncateMiddle(r.output.replace(/\r\n/g, '\n').trimEnd(), 30000) + note;
     if (r.killed === 'timeout') out += `\n[command stopped: exceeded the ${Math.round(timeout / 1000)} s timeout. If it just needs more time, run it again with a larger timeout.]`;
+    // falta de permisos de administrador (Windows): se le muestra al usuario el comando listo para pegar en una
+    // PowerShell elevada, igual que el "!" para que lo corra él; el agente no debe reintentarlo en bucle
+    const elevation = r.code !== 0 && process.platform === 'win32' && needsElevation(out);
+    if (elevation) {
+      ctx.ui?.markdown?.(`${L('⚡ Administrador necesario', '⚡ Administrator needed')}\n${elevatedHint(command)}`);
+      out += '\n[this command needs Administrator rights on Windows and cannot run from this shell. I have shown the user the exact command to run in an elevated PowerShell. Do not retry it; continue with the rest of the task.]';
+    }
     const lines = out ? out.split('\n') : [];
     const display = r.code === 0
       ? (lines.length ? `${lines.slice(0, 3).join('\n')}${lines.length > 3 ? L(`\n… ${lines.length - 3} líneas más`, `\n… ${lines.length - 3} more lines`) : ''}` : L('Sin salida', 'No output'))
-      : `${L('Código de salida', 'Exit code')} ${r.code}${errorLine(lines) ? ` · ${errorLine(lines).slice(0, 120)}` : ''}`;
+      : elevation
+        ? L('Necesita Administrador · te pasé el comando para ejecutarlo', 'Needs Administrator · I gave you the command to run it')
+        : `${L('Código de salida', 'Exit code')} ${r.code}${errorLine(lines) ? ` · ${errorLine(lines).slice(0, 120)}` : ''}`;
     return {
       content: `${out || '(no output)'}${r.code !== 0 ? `\n[exit code ${r.code}]` : ''}`,
       display,

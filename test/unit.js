@@ -402,6 +402,20 @@ export async function unitTests(t) {
     assert(box.state === 'prompt', 'al cerrar el diálogo se pasa a escribir');
   });
 
+  await t('Bash: detecta falta de administrador y le pasa al usuario el comando para ejecutarlo', async (assert) => {
+    const { needsElevation, elevatedHint, Bash } = await import('../src/tools/bash.js');
+    assert(['Administrator rights are required', 'Access to the path is denied', 'El acceso denegado', 'requires elevation'].every(needsElevation), 'reconoce los errores de admin');
+    assert(!['file not found', 'npm ERR! 404'].some(needsElevation), 'no confunde errores normales');
+    assert(elevatedHint('choco install hashcat -y').includes('choco install hashcat -y') && /administrador|administrator/i.test(elevatedHint('x')), 'el aviso trae el comando y cómo abrir admin');
+    if (process.platform !== 'win32') return; // la detección en Bash.run es solo para Windows
+    const shown = [];
+    const cmd = 'echo "The requested operation requires elevation" >&2; exit 1';
+    const r = await Bash.run({ command: cmd, timeout: 10 }, { cwd: ROOT, runtime: { settings: {}, projectRoot: ROOT }, ui: { markdown: (t) => shown.push(t) } });
+    assert(r.isError && /Necesita Administrador/.test(r.display), `display de admin: ${r.display}`);
+    assert(shown.length === 1 && shown[0].includes(cmd), 'le muestra al usuario el comando para pegar');
+    assert(/Do not retry/.test(r.content), 'le dice al modelo que no reintente');
+  });
+
   await t('Bash: un timeout pequeño se entiende como segundos (no mata el comando en milisegundos)', async (assert) => {
     const { Bash } = await import('../src/tools/bash.js');
     const ctx = { cwd: ROOT, runtime: { settings: {}, projectRoot: ROOT } };
