@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { HOME, VERSION } from './config.js';
 import { readJSON, writeJSON, formatTokens } from './util/fs.js';
 import { c, style } from './ui/theme.js';
@@ -144,6 +145,9 @@ export async function serve(o) {
     const headers = { ...req.headers };
     delete headers.authorization;
     delete headers.host;
+    // el cliente manda el cuerpo comprimido (gzip) para que viaje más ligero; el backend lo recibe sin comprimir
+    const gzipped = /gzip/i.test(req.headers['content-encoding'] || '');
+    if (gzipped) { delete headers['content-encoding']; delete headers['content-length']; }
     const isChat = /\/(api\/chat|api\/generate|v1\/chat\/completions|v1\/completions)$/.test(upstreamPath.split('?')[0]);
     const upstream = http.request(`${backendOrigin}${upstreamPath}`, { method: req.method, headers }, (up) => {
       res.writeHead(up.statusCode || 502, up.headers);
@@ -163,7 +167,15 @@ export async function serve(o) {
     });
     // si el cliente se desconecta antes de terminar, se corta la generación en el backend
     res.on('close', () => { if (!res.writableFinished) upstream.destroy(); });
-    req.pipe(upstream);
+    if (!gzipped) { req.pipe(upstream); return; }
+    const gunzip = zlib.createGunzip();
+    gunzip.on('error', () => {
+      upstream.destroy();
+      if (!res.headersSent) res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end('{"error":"invalid gzip body"}');
+      log(400);
+    });
+    req.pipe(gunzip).pipe(upstream);
   };
 
   const tls = o.cert && o.key;

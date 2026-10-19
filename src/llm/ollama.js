@@ -2,6 +2,7 @@
 import { ndjson } from './stream.js';
 import { LLMError, looksLikeToolsUnsupported, safeFetch } from './openai.js';
 import { L } from '../i18n.js';
+import { postJSON } from './compress.js';
 
 function safeParse(s) {
   if (s && typeof s === 'object') return s;
@@ -9,7 +10,8 @@ function safeParse(s) {
 }
 
 export class OllamaClient {
-  constructor({ baseUrl, model, temperature = 0.2, contextWindow = 16384, maxTokens = 0, headers = {}, apiKey, label = 'Ollama' }) {
+  constructor({ baseUrl, model, temperature = 0.2, contextWindow = 16384, maxTokens = 0, headers = {}, apiKey, label = 'Ollama', gzip = false }) {
+    this.gzip = gzip;
     this.baseUrl = baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
     this.model = model;
     this.temperature = temperature;
@@ -60,7 +62,7 @@ export class OllamaClient {
     if (mt) options.num_predict = mt;
     const body = { model: this.model, messages: this.toOllama(messages), stream: true, options };
     if (tools?.length) body.tools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
-    const res = await safeFetch(`${this.baseUrl}/api/chat`, { method: 'POST', headers: this.headers(), body: JSON.stringify(body), signal }, this.label);
+    const res = await postJSON(`${this.baseUrl}/api/chat`, { headers: this.headers(), body, signal, gzip: this.gzip }, this.label);
     if (!res.ok) {
       const text = await res.text();
       throw new LLMError(`HTTP ${res.status}: ${text.slice(0, 400)}`, { status: res.status, body: text, toolsUnsupported: Boolean(tools?.length) && looksLikeToolsUnsupported(res.status, text) });

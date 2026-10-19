@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { startMockLLM } from './fixtures/mock-llm.js';
 
@@ -160,6 +161,14 @@ export async function e2eTests(t) {
         assert(r.stdout.includes('Respondo desde la PC.'), `respuesta: ${r.stdout} ${r.stderr}`);
         const viaProxy = m.requests.slice(before).find((q) => q.url === '/api/chat');
         assert(viaProxy && !viaProxy.headers.authorization, 'petición llegó al backend Ollama sin el token');
+        assert(viaProxy && !viaProxy.headers['content-encoding'] && viaProxy.body?.messages, 'el backend recibe el cuerpo sin comprimir');
+        // un cuerpo comprimido llega al backend descomprimido
+        m.push({ content: 'ok gzip' });
+        const zbody = zlib.gzipSync(JSON.stringify({ model: 'mock-coder:7b', messages: [{ role: 'user', content: 'x'.repeat(5000) }], stream: true }));
+        const gz = await fetch(`http://127.0.0.1:${port}/ollama/api/chat`, { method: 'POST', headers: { Authorization: 'Bearer secreto123', 'Content-Type': 'application/json', 'Content-Encoding': 'gzip' }, body: zbody });
+        assert(gz.status === 200 && (await gz.text()).includes('ok gzip'), `proxy con gzip: ${gz.status}`);
+        const lastProxied = m.requests.at(-1);
+        assert(lastProxied.body?.messages?.[0].content.length === 5000 && !lastProxied.headers['content-encoding'], 'cuerpo descomprimido por codice serve');
         const noAuth = await fetch(`http://127.0.0.1:${port}/codice/usage`);
         assert(noAuth.status === 401, `/codice/usage pide token: ${noAuth.status}`);
         const su = await (await fetch(`http://127.0.0.1:${port}/codice/usage`, { headers: { Authorization: 'Bearer secreto123' } })).json();
@@ -169,6 +178,28 @@ export async function e2eTests(t) {
       } finally {
         server.kill();
       }
+    });
+
+    await t('gzip: comprime las peticiones grandes y vuelve a texto plano si el servidor no lo acepta', async (assert) => {
+      const { OpenAIClient } = await import('../src/llm/openai.js');
+      const { wantsGzip, gzipRejected } = await import('../src/llm/compress.js');
+      assert(wantsGzip({}, { cloud: true, baseUrl: 'https://api.anthropic.com/v1' }), 'nube: sí');
+      assert(wantsGzip({}, { type: 'codice', baseUrl: 'http://192.168.1.5:8787' }), 'PC remota: sí');
+      assert(!wantsGzip({}, { type: 'ollama', baseUrl: 'http://localhost:11434' }), 'servidor en esta PC: no');
+      assert(!wantsGzip({ compressRequests: false }, { cloud: true, baseUrl: 'https://x.ai' }), 'se puede apagar');
+      const big = [{ role: 'user', content: 'contexto repetido '.repeat(2000) }];
+      m.push({ content: 'comprimido' });
+      const client = new OpenAIClient({ baseUrl: `${m.url}/v1`, model: 'mock-coder:7b', gzip: true });
+      let r = await client.chat({ messages: big });
+      let q = m.requests.at(-1);
+      assert(r.content === 'comprimido' && q.headers['content-encoding'] === 'gzip', 'se envía con gzip');
+      assert(q.bytes < JSON.stringify(q.body).length / 5, `viaja al menos 5 veces más ligero: ${q.bytes} B`);
+      m.rejectGzip = true;
+      m.push({ content: 'sin comprimir' });
+      try { r = await client.chat({ messages: big }); } finally { m.rejectGzip = false; }
+      q = m.requests.at(-1);
+      assert(r.content === 'sin comprimir' && !q.headers['content-encoding'] && m.requests.at(-2).rejected, 'reintento sin gzip');
+      assert(gzipRejected(m.url), 'recuerda que ese servidor no acepta gzip');
     });
 
     await t('modo lector de pantalla: frases completas, sin dibujos', async (assert) => {
