@@ -5,6 +5,7 @@ import { resolveProvider, listProviderNames } from '../config.js';
 import { L } from '../i18n.js';
 import { scanModels, resolveModelFile } from '../local/models.js';
 import { localEngine } from '../local/engine.js';
+import { wantsGzip } from './compress.js';
 
 export { LLMError };
 
@@ -18,6 +19,7 @@ function baseOpts(settings, provider, model) {
     maxTokens: settings.maxOutputTokens,
     headers: provider.headers || {},
     label: provider.label || provider.name,
+    gzip: wantsGzip(settings, provider),
   };
 }
 

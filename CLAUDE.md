@@ -355,6 +355,16 @@ Problemas reportados al probarla y solución:
 - Si el modelo falla al resumir, se compacta sin él (pedidos del usuario y últimos mensajes).
 - La barra de estado muestra "N % para autocompactar" cuando faltan 15 puntos o menos.
 
+## Peticiones comprimidas con gzip (rama `feat/gzip-requests`)
+
+- Como Claude Code (oct. 2026): el cuerpo de cada petición al modelo (toda la conversación) se envía con
+  `Content-Encoding: gzip` (`src/llm/compress.js`, `postJSON`). Medido: ~2.6× más ligero en texto y código, ~1 ms.
+  Reduce la espera antes del primer token con internet lento; no acelera la generación.
+- `compressRequests`: `'auto'` (por defecto: solo la API de Anthropic, como Claude Code, y la PC remota), `true` o `false`.
+  `CODICE_GZIP=0` lo apaga. Si un servidor responde 400/415/422 al cuerpo comprimido, se reenvía sin comprimir y
+  se recuerda para ese servidor durante la ejecución.
+- `codice serve` descomprime el cuerpo antes de pasarlo a Ollama/llama.cpp (que no aceptan gzip).
+
 ## Diseño de la consola: bienvenida arriba, caja abajo, paneles (rama `fix/console-layout`)
 
 - `live.js` lleva `contentRow` (renglón donde termina la conversación). La conversación crece desde arriba y la
