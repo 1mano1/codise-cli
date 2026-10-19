@@ -74,6 +74,7 @@ export class Runtime {
   }
 
   get offline() { return Boolean(this.settings.offline); }
+  get codiceHome() { return HOME; }
 
   // Modo ligero: true/false explícito, o 'auto' (ligero salvo con proveedores en la nube).
   isLean() {
@@ -89,6 +90,7 @@ export class Runtime {
   save(keyPath, value, scope = 'user') {
     const file = saveSetting(this.projectRoot, scope, keyPath, value);
     this.reload();
+    this.saveCount = (this.saveCount || 0) + 1;
     // lo que se ve en la bienvenida o en los colores: se vuelve a dibujar la pantalla en su lugar
     if (/^(model|provider|theme|mascot|themeMascots|language|sandbox\.mode)(\.|$)/.test(keyPath) && !this.redrawPending) {
       this.redrawPending = true;

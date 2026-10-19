@@ -23,6 +23,7 @@ function envBlock(runtime, model) {
 - Working directory: ${runtime.cwd}
 - Project root: ${runtime.projectRoot}${isGit ? ' (git repository)' : ''}
 ${shellLine}${sbLine}
+- Códice's own files live in ${runtime.codiceHome || '~/.codice'}: settings.json, mascots/<id>/mascot.json (pixel art: "pixels" is a list of rows, each character is a key of "palette" and "." is transparent), agents/, skills/, commands/.
 - Date: ${new Date().toISOString().slice(0, 10)}
 - Model: ${model}`;
 }

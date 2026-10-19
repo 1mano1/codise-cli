@@ -103,6 +103,13 @@ export async function uiTests(t) {
     assert(!/Mascota: |¿Dónde la uso\? →/.test(screen), 'sin mensajes de la mascota en la conversación');
   });
 
+  await t('consola v3: siempre se ve que trabaja y cuándo terminó', async (assert) => {
+    assert(/Escribiendo… .*\d+ s.*esc interrumpe/.test(shots.streaming), `indicador visible mientras escribe: ${shots.streaming.split('\n').slice(-6).join(' | ')}`);
+    assert(/✻ Listo · \d+/.test(shots.streamFin), 'línea de cierre del turno');
+    assert(/✻ Listo · .*1 herramienta/.test(shots.final), 'cuenta las herramientas del turno');
+    assert(/⎿ (guardado|cerrado)/.test(shots.mascotaPantalla || ''), 'un comando sin salida dice qué pasó');
+  });
+
   await t('consola v2: el texto aparece mientras llega (no de golpe)', async (assert) => {
     assert(shots.streaming.includes('Este es un') && !shots.streaming.includes('fluida.'), 'se ve el texto a medias mientras llega');
     assert(shots.streamFin.includes('se ve fluida.'), 'el texto termina completo');

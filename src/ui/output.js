@@ -50,10 +50,15 @@ function record(entry) {
 }
 
 // Imprime un bloque que se recalcula al cambiar el ancho de la terminal.
+// Cuántas veces se ha impreso algo (para saber si un comando no mostró nada).
+let outCount = 0;
+export function outputCount() { return outCount; }
+
 export function outBlock(render) {
   const text = render();
   if (!text) return;
   if (capture) { out(text); return; }
+  outCount++;
   if (liveActive() && opts.stream === process.stdout) {
     record({ render });
     writeAbove(text);
@@ -89,6 +94,7 @@ export function out(s = '') {
   s = String(s);
   if (!s) return;
   if (capture) { capture.text += s; lastChar = s.at(-1); return; }
+  outCount++;
   if (liveActive() && opts.stream === process.stdout) {
     record({ text: s.endsWith('\n') ? s : `${s}\n` });
     writeAbove(s);
@@ -144,6 +150,17 @@ export function info(msg) { ensureNewline(); println(c.muted(msg)); }
 export function success(msg) { ensureNewline(); println(`${c.success('✓', { bold: true })} ${c.primary(msg)}`); }
 export function warn(msg) { ensureNewline(); for (const [i, l] of wrap(msg, width() - 3).entries()) println(`${i ? ' ' : c.warning('⚠', { bold: true })} ${c.warning(l)}`); }
 export function hint(msg) { ensureNewline(); for (const l of wrap(msg, width() - 1)) println(c.dim(l)); }
+
+// Línea de cierre de cada turno: que se note que terminó (o que espera respuesta), cuánto tardó y qué hizo.
+export function turnDone({ ms, tools = 0, waiting = false, stuck = false }) {
+  const parts = [formatDuration(ms)];
+  if (tools) parts.push(L(`${tools} herramienta${tools === 1 ? '' : 's'}`, `${tools} tool${tools === 1 ? '' : 's'}`));
+  const state = stuck ? L('Detenido', 'Stopped') : waiting ? L('Esperando tu respuesta', 'Waiting for your reply') : L('Listo', 'Done');
+  ensureNewline();
+  if (opts.screenReader) return println(`${state}. ${parts.join(', ')}.`);
+  const mark = stuck ? c.warning('✻') : waiting ? c.info('✻') : c.success('✻');
+  println(`${mark} ${c.dim(`${state} · ${parts.join(' · ')}`)}`);
+}
 
 // Ajusta texto plano al ancho (por palabras).
 export function wrap(text, max = width() - 2) {
@@ -401,14 +418,19 @@ const FRAMES = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '�
 export class Spinner {
   constructor() { this.timer = null; this.active = false; }
 
-  start(verb, { label = '' } = {}) {
+  // since/tokens: para que el tiempo y los tokens cuenten todo el turno (no se reinician en cada paso).
+  start(verb, { label = '', since = null, tokens = 0 } = {}) {
+    const sameTurn = since && since === this.since;
     this.stop();
     this.verb = verb;
     this.label = label;
-    this.t0 = Date.now();
-    this.tokens = 0;
+    this.since = since;
+    this.t0 = since || Date.now();
+    this.stepT0 = Date.now();
+    this.tokens = tokens;
+    this.stepTokens = 0;
     this.active = true;
-    if (opts.screenReader) { ensureNewline(); println(`${label ? `${label}: ` : ''}${L('Trabajando…', 'Working…')}`); this.active = false; return; }
+    if (opts.screenReader) { if (!sameTurn) { ensureNewline(); println(`${label ? `${label}: ` : ''}${L('Trabajando…', 'Working…')}`); } this.active = false; return; }
     // Con la caja de entrada activa, el spinner vive en la zona fija, justo encima de la caja.
     if (liveActive() && opts.stream === process.stdout) {
       let i = 0;
@@ -416,7 +438,9 @@ export class Spinner {
         const secs = formatDuration(Date.now() - this.t0);
         const tk = this.tokens ? ` · ↓ ${formatTokens(this.tokens)} tokens` : '';
         const frame = opts.reduceMotion ? '✻' : FRAMES[i % FRAMES.length];
-        return `${c.soft(frame)} ${this.label ? c.agent(`${this.label} `) : ''}${c.soft(this.verb, { italic: true })}  ${c.dim(`${secs}${tk} · ${L('esc interrumpe', 'esc interrupts')}`)}`;
+        // modelos locales: antes del primer token leen todo el contexto y pueden tardar; se explica para que no parezca trabado
+        const waiting = !this.stepTokens && Date.now() - this.stepT0 > 8000 ? ` · ${L('el modelo está leyendo el contexto', 'the model is reading the context')}` : '';
+        return `${c.soft(frame)} ${this.label ? c.agent(`${this.label} `) : ''}${c.soft(this.verb, { italic: true })}  ${c.dim(`${secs}${tk}${waiting} · ${L('esc interrumpe', 'esc interrupts')}`)}`;
       };
       setLiveSpinner(lineFn);
       this.liveMode = true;
@@ -446,7 +470,7 @@ export class Spinner {
 
   setVerb(verb) { this.verb = verb; }
 
-  addTokens(n) { this.tokens += n; }
+  addTokens(n) { this.tokens += n; this.stepTokens = (this.stepTokens || 0) + n; }
 
   stop() {
     if (this.liveMode) {

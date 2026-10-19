@@ -416,3 +416,17 @@ Problemas reportados al probarla y solución:
 - `runtime.save()` redibuja solo al cambiar modelo, proveedor, tema, mascota, idioma o `sandbox.mode`.
 - `/mascot` y `/theme` ya no imprimen en la conversación (el cambio se ve en la bienvenida); con lector de
   pantalla o sin consola viva sí se anuncia.
+
+## Feedback del turno y modelos pequeños (rama `feat/turn-feedback`)
+
+- El indicador (spinner) sigue visible todo el turno, también mientras el modelo escribe ("Escribiendo…"),
+  piensa ("Pensando…") o arma una llamada a herramienta ("Preparando Bash…", también en modo prompt donde el
+  `<tool_call>` va oculto). Tiempo y tokens cuentan todo el turno (`beginTurn`). Si un paso lleva 8 s sin tokens:
+  "el modelo está leyendo el contexto".
+- Cierre de turno `ui.turnDone`: "✻ Listo · 14 s · 3 herramientas", "Esperando tu respuesta" (si terminó con
+  pregunta o se rechazó un permiso) o "Detenido".
+- Comandos que no imprimen nada dejan "⎿ guardado / cerrado / cerrado sin cambios".
+- `announcesAction`: si el modelo termina anunciando ("voy a…", "a continuación…", "let me…") sin llamar
+  herramientas, se le pide que lo haga (máx. 2 por turno).
+- Read/Edit con archivo inexistente sugieren archivos con el mismo nombre en el proyecto y en ~/.codice
+  (`findSimilar`), o piden usar Glob antes de preguntar. El prompt dice dónde viven los archivos de Códice.

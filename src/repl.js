@@ -185,13 +185,22 @@ class Repl {
     const builtin = BUILTIN_COMMANDS[name] || Object.values(BUILTIN_COMMANDS).find((cmd) => cmd.aliases?.includes(name));
     if (builtin) {
       this.input.setBusy(true);
+      const printed = ui.outputCount();
+      const saved = this.runtime.saveCount || 0;
+      let panel = false;
       try {
         // los comandos informativos se muestran en un panel que se cierra con esc (no ensucian la conversación)
         if (builtin.panel && liveActive() && this.input.modal && !ui.isScreenReader()) {
           const text = await ui.captureOutput(() => builtin.run(args, ctx));
           await showPanel(this.input, { title: `/${name}`, text });
+          panel = true;
         } else await builtin.run(args, ctx);
       } finally { this.input.setBusy(false); }
+      // si el comando no dejó nada en la conversación, se dice qué pasó (para que no parezca que no hizo nada)
+      if (ui.outputCount() === printed && !['clear', 'exit'].includes(name)) {
+        const what = (this.runtime.saveCount || 0) > saved ? L('guardado', 'saved') : panel ? L('cerrado', 'closed') : L('cerrado sin cambios', 'closed without changes');
+        ui.println(c.dim(`  ⎿ ${what}`));
+      }
       return;
     }
     const custom = this.runtime.commands[rawName];
@@ -242,8 +251,9 @@ class Repl {
     this.input.setBusy(true);
     const t0 = Date.now();
     let turnError = null;
+    let result = null;
     try {
-      await this.agent.run(content, { signal: this.controller.signal });
+      result = await this.agent.run(content, { signal: this.controller.signal });
     } catch (e) {
       rt.spinner.stop();
       turnError = e.name === 'AbortError' ? 'interrupted by the user' : e.message;
@@ -267,10 +277,10 @@ class Repl {
       this.session.save();
       if (rt.settings.notifications && Date.now() - t0 > 15000) process.stdout.write('\x07');
     }
-    // el tiempo de respuesta va en la barra de estado, no en la conversación
     rt.lastResponseMs = Date.now() - t0;
+    // cierre del turno: deja claro que terminó (o que espera una respuesta) y cuánto tardó
+    if (result) ui.turnDone({ ms: rt.lastResponseMs, tools: result.tools || 0, waiting: Boolean(result.stopped) || /\?\s*$/.test(String(result.text || '').trim()), stuck: Boolean(result.stuck) });
     this.input.refreshBelow?.();
-    if (!this.input.box && rt.lastResponseMs > 20000) ui.hint(`(${formatDuration(rt.lastResponseMs)})`);
   }
 
   abort() {
