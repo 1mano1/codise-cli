@@ -88,6 +88,20 @@ codice --base-url http://localhost:8080/v1 --model mi-modelo
 codice config set fallback '["ollama:qwen2.5-coder:7b"]'   # respaldo
 ```
 
+### Usar un modelo más potente (nube)
+
+Lo que más mejora los resultados es el modelo. Para las tareas difíciles, conecta un modelo grande por API; para lo simple, sigue con el local. **OpenRouter** es lo más cómodo: una sola clave da acceso a muchos modelos (Claude, GPT, Gemini, Llama…) y pagas por uso.
+
+1. Crea una cuenta en [openrouter.ai](https://openrouter.ai), agrega saldo y copia tu clave (`sk-or-…`).
+2. Guárdala en una variable de entorno y activa el proveedor:
+   ```bash
+   setx OPENROUTER_API_KEY "sk-or-..."    # abre una terminal nueva después
+   ```
+   En Códice: `/provider openrouter`, luego `/models` para elegir (p. ej. `anthropic/claude-...`).
+3. Cambia entre modelos según la tarea con `/model` o `/provider`. Deja el local para lo cotidiano y el de nube para lo pesado.
+
+También hay presets directos: `anthropic`, `openai`, `groq`, `deepseek`, `gemini` (cada uno con su variable `*_API_KEY`).
+
 ### Usar tu PC potente desde la laptop
 
 En la PC (con Ollama o LM Studio corriendo):
@@ -149,7 +163,7 @@ Asigna un modelo distinto a cualquier agente: `codice config set agentModels.exp
 
 ## Skills, comandos, plugins, MCP y hooks
 
-- **Skills**: `~/.codice/skills/<nombre>/SKILL.md` con `name` y `description`. El agente las carga cuando aplican, o úsalas con `/<nombre>`.
+- **Skills**: `~/.codice/skills/<nombre>/SKILL.md` con `name` y `description`. El agente las carga cuando aplican, o úsalas con `/<nombre>`. Códice trae de fábrica `plan`, `verify`, `debug` y `review` (buenas prácticas que ayudan sobre todo a modelos pequeños).
 - **Comandos**: `.codice/commands/<nombre>.md` con `$ARGUMENTS`, `$1…$9` y `` !`comando` ``.
 - **Plugins**: `/plugin install <ruta | url git | usuario/repo | plugin@marketplace>`. Agrupan skills, agentes, comandos, hooks y MCP. Ejemplo en [`examples/plugin-ejemplo`](examples/plugin-ejemplo).
 - **MCP**: `/mcp add filesystem npx -y @modelcontextprotocol/server-filesystem .` o `.mcp.json` en el proyecto. Las herramientas aparecen como `mcp__servidor__herramienta`.

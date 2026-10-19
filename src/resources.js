@@ -9,7 +9,7 @@ import { parseFrontmatter, stringifyFrontmatter, toList } from './util/frontmatt
 // Directorios en orden de prioridad creciente (los últimos sobrescriben a los primeros).
 export function resourceDirs(kind, { projectRoot, plugins = [], compat = true }) {
   const dirs = [];
-  if (kind === 'agents') dirs.push({ dir: path.join(ROOT, 'agents'), source: 'incluido' });
+  if (kind === 'agents' || kind === 'skills') dirs.push({ dir: path.join(ROOT, kind), source: 'incluido' });
   dirs.push({ dir: path.join(HOME, kind), source: 'usuario' });
   if (compat) dirs.push({ dir: path.join(os.homedir(), '.claude', kind), source: 'usuario' });
   for (const p of plugins) dirs.push({ dir: path.join(p.root, kind), source: `plugin: ${p.name}`, namespace: p.name });

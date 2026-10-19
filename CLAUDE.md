@@ -585,3 +585,13 @@ Dos bloqueos genéricos que el usuario documentó al ver al agente atascarse en 
 - Permisos: `acceptEdits` (shift+tab) solo acepta ediciones, no comandos (por diseño) → en tareas con muchos Bash
   seguía preguntando. Nueva opción en el diálogo: "Sí, y no preguntar más en esta sesión" (`choice: 'session'`),
   que pasa a `bypass` solo en memoria (no se guarda; al reabrir vuelve a default). El usuario acepta el riesgo.
+
+## Skills integradas + modelo potente (rama `feat/builtin-skills-and-cloud`)
+
+- `resourceDirs` ahora carga skills desde `ROOT/skills` (como los agentes), así Códice trae skills de fábrica:
+  `plan` (planificar antes de actuar), `verify` (verificar lo hecho), `debug` (depurar con método) y `review`
+  (revisar un diff). El Skill tool se las muestra al modelo; con un modelo potente las usa solo, o se invocan con
+  `/plan` etc. Ayudan sobre todo a los modelos pequeños a no irse por las ramas.
+- Palanca 1 (lo que más mejora): usar un modelo grande por API para lo difícil. Los presets ya existen
+  (openrouter, anthropic, openai, groq, deepseek, gemini). README documenta el camino recomendado (OpenRouter:
+  una clave, muchos modelos). El local se queda para lo cotidiano; se cambia con `/model` o `/provider`.
