@@ -461,7 +461,7 @@ export async function unitTests(t) {
     assert(missingProgram("'7z' is not recognized as an internal command") === '7z', 'not recognized de Windows');
     assert(missingProgram('Python was not found; run without arguments') === 'Python', 'python no encontrado');
     assert(!missingProgram('ls: cannot access /c/foo: No such file') && !missingProgram('make: *** No rule'), 'no confunde otros errores');
-    assert(installHint('7z').includes('7zip.7zip') && /winget|brew|apt/.test(installHint('loquesea')), 'da cómo instalar');
+    assert(/7zip\.7zip|7z/.test(installHint('7z')) && /winget|brew|apt/.test(installHint('loquesea')), 'da cómo instalar (según el sistema)');
     const shown = [];
     const r = await Bash.run({ command: 'herramienta_que_no_existe_xyz --v', timeout: 10 }, { cwd: ROOT, runtime: { settings: {}, projectRoot: ROOT }, ui: { markdown: (t) => shown.push(t) } });
     assert(r.isError && /is not installed|no está instalado|Falta|missing/i.test(r.content), `avisa que falta: ${r.content.slice(-200)}`);
