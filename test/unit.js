@@ -294,6 +294,15 @@ export async function unitTests(t) {
     assert(out.pluginHooks(plugins[0]).PostToolUse?.[0]?.pluginRoot, 'hooks con raíz del plugin');
   });
 
+  await t('skills integradas: Códice trae plan, verify, debug y review de fábrica', async (assert) => {
+    const { loadSkills } = await import('../src/resources.js');
+    const s = loadSkills({ projectRoot: tmp(), plugins: [], compat: false });
+    for (const name of ['plan', 'verify', 'debug', 'review']) {
+      assert(s[name] && s[name].source === 'incluido', `existe la skill ${name}`);
+      assert(s[name].description.length > 10 && s[name].load().length > 100, `${name} tiene descripción y cuerpo`);
+    }
+  });
+
   await t('sandbox: argumentos de cada motor, bloqueos, proxy de dominios y permisos', async (assert) => {
     const S = await import('../src/sandbox.js');
     const http = await import('node:http');
