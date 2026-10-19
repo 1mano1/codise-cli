@@ -64,18 +64,24 @@ export function outBlock(render) {
   out(text);
 }
 
+// Vuelve a dibujar la conversación en su lugar (al cambiar el ancho, el tema, la mascota o el modelo): los
+// bloques guardados como funciones (p. ej. la bienvenida) se recalculan con los valores actuales.
+export function redraw() {
+  if (!liveActive() || opts.screenReader) return false;
+  eraseLive();
+  process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+  anchorBottom();
+  const text = history.map((e) => (e.render ? e.render() : e.text)).join('');
+  if (text) writeAbove(text);
+  else drawLive();
+  return true;
+}
+
 let resizeTimer = null;
 export function handleResize() {
   if (!liveActive() || opts.screenReader) return;
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    eraseLive();
-    process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
-    anchorBottom(); // la conversación se vuelve a dibujar desde arriba al nuevo ancho; la caja sigue abajo
-    const text = history.map((e) => (e.render ? e.render() : e.text)).join('');
-    if (text) writeAbove(text);
-    else drawLive();
-  }, 120);
+  resizeTimer = setTimeout(redraw, 120);
 }
 
 // Escribe respetando la zona viva (caja de entrada) o el spinner: los borra, escribe y los vuelve a dibujar.
@@ -220,8 +226,12 @@ export function artWithMascot(mascot, { state = 'idle' } = {}) {
 }
 
 // Pantalla de inicio mínima: marca, una línea de estado y una de ayuda.
-export function banner({ version, model, provider, cwd, memory, mascot, activity = 0, sandbox = null }) {
+// model, provider, mascot y sandbox pueden ser funciones: así la bienvenida muestra siempre los valores actuales
+// cuando se vuelve a dibujar (al cambiar de mascota, tema o modelo).
+export function banner({ version, model: modelArg, provider: providerArg, cwd, memory, mascot: mascotArg, activity = 0, sandbox: sandboxArg = null }) {
+  const v = (x) => (typeof x === 'function' ? x() : x);
   if (opts.screenReader) {
+    const model = v(modelArg), provider = v(providerArg), sandbox = v(sandboxArg);
     println(L(`Códice ${version}. Agente de programación open source.`, `Códice ${version}. Open-source coding agent.`));
     if (sandbox) println(`Sandbox: ${sandbox.text}.`);
     println(model ? L(`Modelo ${model} vía ${provider}.`, `Model ${model} via ${provider}.`) : L('Sin modelo configurado. Escribe /setup.', 'No model configured. Type /setup.'));
@@ -234,6 +244,7 @@ export function banner({ version, model, provider, cwd, memory, mascot, activity
   const home = process.env.USERPROFILE || process.env.HOME || '';
   const shortCwd = home && cwd.toLowerCase().startsWith(home.toLowerCase()) ? `~${cwd.slice(home.length)}` : cwd;
   const render = () => {
+    const model = v(modelArg), provider = v(providerArg), mascot = v(mascotArg), sandbox = v(sandboxArg);
     const cols = (opts.stream.columns || 80) - 1;
     const pet = cols >= 64 ? renderMascot(mascot, 'idle') : [];
     const petW = pet.length ? visibleWidth(pet[0]) : 0;

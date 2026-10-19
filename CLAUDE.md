@@ -408,3 +408,11 @@ Problemas reportados al probarla y solución:
   El prompt le dice al modelo que está en sandbox (y que con Docker es un contenedor Linux con `sh`).
 - Pruebas reales (se omiten sin motor): en CI Linux se instala bubblewrap; macOS usa sandbox-exec; probado en
   Windows con Docker Desktop. `CODICE_SANDBOX_ENGINE` fuerza el motor (pruebas).
+
+## Bienvenida viva (rama `fix/live-mascot`)
+
+- `banner()` acepta funciones para modelo, proveedor, mascota y sandbox: al redibujar muestra los valores actuales.
+- `ui.redraw()` vuelve a dibujar la conversación en su lugar (lo usa también el cambio de tamaño).
+- `runtime.save()` redibuja solo al cambiar modelo, proveedor, tema, mascota, idioma o `sandbox.mode`.
+- `/mascot` y `/theme` ya no imprimen en la conversación (el cambio se ve en la bienvenida); con lector de
+  pantalla o sin consola viva sí se anuncia.

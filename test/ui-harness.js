@@ -107,6 +107,22 @@ key('', { name: 'escape' });
 await sleep(150);
 shots.sandboxCerrado = vt.viewport();
 
+// /mascot: la mascota cambia en la bienvenida (en su lugar) y no se imprime en la conversación
+shots.mascotaAntes = vt.screen().split('\n').slice(0, 9);
+await type('/mascot');
+await sleep(50);
+enter();
+await waitFor(() => vt.screen().includes('Mascota para el tema'));
+key('', { name: 'down' });
+await sleep(50);
+enter();
+await waitFor(() => vt.screen().includes('¿Dónde la uso?'));
+await sleep(50);
+enter();
+await sleep(400);
+shots.mascotaDespues = vt.screen().split('\n').slice(0, 9);
+shots.mascotaPantalla = vt.screen();
+
 // ventana más angosta: todo se vuelve a dibujar al nuevo ancho
 process.stdout.columns = 60;
 vt.cols = 60;

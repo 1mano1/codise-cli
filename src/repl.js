@@ -123,16 +123,16 @@ class Repl {
   async welcome() {
     const rt = this.runtime;
     if (!rt.settings.onboarded && this.input.tty) await runOnboarding(rt, this.input);
-    const sb = sandboxStatus(rt.settings);
+    // funciones: al volver a dibujar la pantalla, la bienvenida muestra la mascota, el modelo y el sandbox actuales
     ui.banner({
-      sandbox: sb.mode === 'off' ? null : { text: describeSandbox(sb), ok: sb.active },
+      sandbox: () => { const sb = sandboxStatus(rt.settings); return sb.mode === 'off' ? null : { text: describeSandbox(sb), ok: sb.active }; },
       version: VERSION,
-      model: rt.settings.model,
-      provider: rt.providerInfo()?.label || rt.settings.provider,
+      model: () => rt.settings.model,
+      provider: () => rt.providerInfo()?.label || rt.settings.provider,
       cwd: rt.cwd,
       memory: rt.memory.map((m) => m.name),
       activity: rt.recentActivity?.length || 0,
-      mascot: rt.mascot(),
+      mascot: () => rt.mascot(),
     });
     const failed = rt.mcp.status().filter((x) => x.status !== 'conectado');
     if (failed.length) ui.warn(L(`${failed.length} servidor(es) MCP no conectaron. Revisa /mcp.`, `${failed.length} MCP server(s) failed to connect. See /mcp.`));

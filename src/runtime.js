@@ -4,7 +4,7 @@ import { loadSettings, findProjectRoot, settingsFiles, saveSetting, resolveProvi
 import { readJSON, writeJSON } from './util/fs.js';
 import { setTheme, currentTheme, setColorLevel, detectColorLevel, c, visibleWidth } from './ui/theme.js';
 import { loadMascots, resolveMascot, mascotVerbs } from './ui/mascot.js';
-import { Spinner, configureOutput, warn } from './ui/output.js';
+import { Spinner, configureOutput, warn, redraw } from './ui/output.js';
 import { createUI } from './ui/bridge.js';
 import { loadSkills, loadAgents, loadCommands } from './resources.js';
 import { listPlugins, pluginHooks, pluginMcpServers } from './plugins.js';
@@ -89,6 +89,11 @@ export class Runtime {
   save(keyPath, value, scope = 'user') {
     const file = saveSetting(this.projectRoot, scope, keyPath, value);
     this.reload();
+    // lo que se ve en la bienvenida o en los colores: se vuelve a dibujar la pantalla en su lugar
+    if (/^(model|provider|theme|mascot|themeMascots|language|sandbox\.mode)(\.|$)/.test(keyPath) && !this.redrawPending) {
+      this.redrawPending = true;
+      setImmediate(() => { this.redrawPending = false; redraw(); });
+    }
     return file;
   }
 
