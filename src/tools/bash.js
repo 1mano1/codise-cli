@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { truncateMiddle } from '../util/fs.js';
 import { L } from '../i18n.js';
-import { sandboxStatus, sandboxSpawn, detectBlock } from '../sandbox.js';
+import { sandboxStatus, sandboxSpawn, detectBlock, hostAllowed } from '../sandbox.js';
 
 let cachedShell = null;
 
@@ -127,7 +127,9 @@ export const Bash = {
     }
     let r = await runShell(command, st.active ? boxed(st) : base);
     let note = '';
-    const block = st.active ? detectBlock(r.output, r) : null;
+    let block = st.active ? detectBlock(r.output, r) : null;
+    // un fallo de red hacia un dominio ya permitido no es culpa del sandbox
+    if (block?.kind === 'network' && block.host && hostAllowed(block.host, st.allowedDomains)) block = null;
     if (block && r.killed !== 'abort') {
       const what = block.kind === 'network' ? `network access${block.host ? ` to ${block.host}` : ''}` : `writing${block.path ? ` to ${block.path}` : ''} outside the project`;
       if (st.mode === 'auto' && ctx.ui?.interactive && ctx.ui.sandboxBlocked) {

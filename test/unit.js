@@ -305,6 +305,7 @@ export async function unitTests(t) {
     assert(S.containerPath('/a/proj', '/a/proj/src/x') === '/workspace/src/x' && S.containerPath('/a/proj', '/otro') === '/workspace', 'ruta dentro del contenedor');
     assert(S.detectBlock('npm ERR! getaddrinfo ENOTFOUND registry.npmjs.org', { code: 1 })?.host === 'registry.npmjs.org', 'red bloqueada con host');
     assert(S.detectBlock("curl: (6) Could not resolve host: example.com", { code: 6 })?.kind === 'network', 'curl sin red');
+    assert(S.detectBlock('TypeError: fetch failed', { code: 1 })?.kind === 'network', 'fetch de Node sin red (macOS)');
     assert(S.detectBlock("touch: cannot touch '/etc/x': Read-only file system", { code: 1 })?.path === '/etc/x', 'escritura bloqueada con ruta');
     assert(S.detectBlock('ENOTFOUND x.com', { code: 0 }) === null && S.detectBlock('test failed: expected 2', { code: 1 }) === null, 'sin falsos positivos');
     assert(S.hostAllowed('registry.npmjs.org', ['npmjs.org']) && !S.hostAllowed('evilnpmjs.org', ['npmjs.org']) && !S.hostAllowed('github.com', []), 'dominios permitidos');

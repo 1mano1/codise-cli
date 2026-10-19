@@ -40,7 +40,8 @@ export function detectEngine({ refresh = false, prefer } = {}) {
       : { engine: null, problem: L('sandbox-exec no está disponible', 'sandbox-exec is not available') };
   } else {
     const r = spawnSync('docker', ['info', '--format', '{{.OSType}}'], { encoding: 'utf8', timeout: 8000, windowsHide: true });
-    if (r.error) result = { engine: null, problem: L('falta Docker Desktop (instálalo desde docker.com)', 'Docker Desktop is missing (install it from docker.com)') };
+    if (r.error?.code === 'ENOENT') result = { engine: null, problem: L('falta Docker Desktop (instálalo desde docker.com)', 'Docker Desktop is missing (install it from docker.com)') };
+    else if (r.error) result = { engine: null, problem: L('Docker no responde (revisa Docker Desktop)', 'Docker is not responding (check Docker Desktop)') };
     else if (r.status !== 0) result = { engine: null, problem: L('Docker está instalado pero no está corriendo (abre Docker Desktop)', 'Docker is installed but not running (open Docker Desktop)') };
     else if (r.stdout.trim() !== 'linux') result = { engine: null, problem: L('Docker usa contenedores de Windows; cambia a contenedores de Linux', 'Docker is using Windows containers; switch to Linux containers') };
     else result = { engine: { name: 'docker', label: 'Docker' }, problem: null };
@@ -243,7 +244,7 @@ export function detectBlock(output, { code } = {}) {
   const out = String(output || '');
   // el proxy rechazó un dominio no permitido (npm, pip, git… muestran un 403 genérico)
   if (denied) return { kind: 'network', host: denied };
-  const net = /Blocked by Codice sandbox|ENOTFOUND|EAI_AGAIN|getaddrinfo|Could not resolve host|Temporary failure in name resolution|Network is unreachable|Name or service not known|nodename nor servname|Failed to establish a new connection|tunneling socket could not be established|connect EPERM|Operation not permitted.*(connect|socket)/i;
+  const net = /Blocked by Codice sandbox|ENOTFOUND|EAI_AGAIN|getaddrinfo|Could not resolve host|Temporary failure in name resolution|Network is unreachable|Name or service not known|nodename nor servname|Failed to establish a new connection|tunneling socket could not be established|connect EPERM|Operation not permitted.*(connect|socket)|fetch failed/i;
   if (net.test(out)) {
     const m = out.match(/Blocked by Codice sandbox: host ([\w.-]+)/) || out.match(/ENOTFOUND ([\w.-]+)/) || out.match(/EAI_AGAIN ([\w.-]+)/)
       || out.match(/resolve host:?\s*'?([\w.-]+)/i) || out.match(/https?:\/\/([\w.-]+\.[a-z]{2,})/i);
