@@ -54,7 +54,7 @@ export const BUILTIN_COMMANDS = {
     async run(args, { runtime, repl }) {
       const { runOnboarding } = await import('../onboarding.js');
       await runOnboarding(runtime, repl.input);
-      ui.banner({ version: VERSION, model: runtime.settings.model, provider: runtime.providerInfo()?.label || runtime.settings.provider, cwd: runtime.cwd, memory: runtime.memory.map((m) => m.name), mascot: runtime.mascot() });
+      ui.banner({ version: VERSION, model: () => runtime.settings.model, provider: () => runtime.providerInfo()?.label || runtime.settings.provider, cwd: runtime.cwd, memory: runtime.memory.map((m) => m.name), mascot: () => runtime.mascot() });
     },
   },
 

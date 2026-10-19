@@ -7,6 +7,7 @@ import { c, style, allThemes, setTheme, currentTheme, validateContrast, TOKENS }
 import { renderMascot, saveCustomMascot, validateMascot, loadMascots, resolveMascot } from '../ui/mascot.js';
 import * as ui from '../ui/output.js';
 import { select } from '../ui/select.js';
+import { liveActive } from '../ui/live.js';
 import { pngToMascot } from '../util/png.js';
 import { resolvePath } from '../util/fs.js';
 import { MODES, MODE_INFO } from '../permissions.js';
@@ -75,7 +76,8 @@ async function themeCommand(args, ctx) {
   if (!choice) { setTheme(original, runtime.settings.customThemes); return; }
   if (choice === '__custom__') { setTheme(original, runtime.settings.customThemes); return customThemeWizard(ctx); }
   runtime.save('theme', choice);
-  ui.success(`${L('Tema', 'Theme')}: ${runtime.themeName()}${runtime.mascot() ? ` · ${runtime.mascot().name}` : ''}`);
+  // el cambio se ve en la bienvenida y los colores (se redibuja en su lugar); solo se anuncia sin pantalla visual
+  if (ui.isScreenReader() || !liveActive()) ui.success(`${L('Tema', 'Theme')}: ${runtime.themeName()}${runtime.mascot() ? ` · ${runtime.mascot().name}` : ''}`);
 }
 
 async function mascotCommand(args, ctx) {
@@ -130,13 +132,16 @@ async function mascotCommand(args, ctx) {
       { label: L(`Solo con el tema ${theme.name}`, `Only with the ${theme.name} theme`), value: 'theme' },
       { label: L('Con todos los temas', 'With every theme'), value: 'all' },
     ],
+    erase: true,
   });
   if (!scope) return;
   if (scope === 'theme') runtime.save(`themeMascots.${theme.id}`, choice);
   else { runtime.save('mascot.name', choice); runtime.save('themeMascots', {}); }
-  const m = runtime.mascot();
-  ui.success(choice === 'none' ? L('Sin mascota.', 'No mascot.') : `${L('Mascota', 'Mascot')}: ${m?.name || '—'}`);
-  for (const l of renderMascot(m)) ui.println(`  ${l}`);
+  // la nueva mascota aparece en la bienvenida (se redibuja en su lugar); no se imprime en la conversación
+  if (ui.isScreenReader() || !liveActive()) {
+    const m = runtime.mascot();
+    ui.success(choice === 'none' ? L('Sin mascota.', 'No mascot.') : `${L('Mascota', 'Mascot')}: ${m?.name || '—'}`);
+  }
 }
 
 async function importMascot(file, name, { runtime }) {

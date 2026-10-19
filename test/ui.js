@@ -93,6 +93,16 @@ export async function uiTests(t) {
     assert(!closed.at(-1).includes('⛨ sandbox'), 'no se activó al cerrar con esc');
   });
 
+  await t('consola v3: /mascot cambia la mascota en la bienvenida, sin imprimirla en la conversación', async (assert) => {
+    const before = (shots.mascotaAntes || []).join('\n');
+    const after = (shots.mascotaDespues || []).join('\n');
+    assert(after.includes('✻ Códice') && before.includes('✻ Códice'), 'la bienvenida sigue arriba');
+    assert(before !== after, 'la mascota del recuadro cambió');
+    const screen = shots.mascotaPantalla || '';
+    assert((screen.match(/✻ Códice/g) || []).length === 1, 'una sola bienvenida (no se imprimió otra)');
+    assert(!/Mascota: |¿Dónde la uso\? →/.test(screen), 'sin mensajes de la mascota en la conversación');
+  });
+
   await t('consola v2: el texto aparece mientras llega (no de golpe)', async (assert) => {
     assert(shots.streaming.includes('Este es un') && !shots.streaming.includes('fluida.'), 'se ve el texto a medias mientras llega');
     assert(shots.streamFin.includes('se ve fluida.'), 'el texto termina completo');
