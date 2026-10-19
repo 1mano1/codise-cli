@@ -455,6 +455,41 @@ export async function unitTests(t) {
     } finally { srv.close(); }
   });
 
+  await t('Bash: detecta un programa que falta y dice cómo instalarlo, sin rodeos', async (assert) => {
+    const { missingProgram, installHint, Bash } = await import('../src/tools/bash.js');
+    assert(missingProgram('bash: line 1: 7z: command not found') === '7z', 'command not found de bash');
+    assert(missingProgram("'7z' is not recognized as an internal command") === '7z', 'not recognized de Windows');
+    assert(missingProgram('Python was not found; run without arguments') === 'Python', 'python no encontrado');
+    assert(!missingProgram('ls: cannot access /c/foo: No such file') && !missingProgram('make: *** No rule'), 'no confunde otros errores');
+    assert(/7zip\.7zip|7z/.test(installHint('7z')) && /winget|brew|apt/.test(installHint('loquesea')), 'da cómo instalar (según el sistema)');
+    const shown = [];
+    const r = await Bash.run({ command: 'herramienta_que_no_existe_xyz --v', timeout: 10 }, { cwd: ROOT, runtime: { settings: {}, projectRoot: ROOT }, ui: { markdown: (t) => shown.push(t) } });
+    assert(r.isError && /is not installed|no está instalado|Falta|missing/i.test(r.content), `avisa que falta: ${r.content.slice(-200)}`);
+    assert(shown.length === 1 && /instal/i.test(shown[0]), 'se lo muestra al usuario');
+    assert(/Do not try to work around/i.test(r.content), 'le dice al modelo que no insista');
+  });
+
+  await t('web: no repite la misma búsqueda ni el mismo fetch en la sesión', async (assert) => {
+    const { WebSearch, WebFetch } = await import('../src/tools/web.js');
+    const http = await import('node:http');
+    let searches = 0, fetches = 0;
+    const srv = http.createServer((req, res) => {
+      if (req.url.startsWith('/ddg')) { searches++; res.writeHead(200); res.end('<a class="result__a" href="https://x.com/a">Titulo</a><a class="result__snippet">snippet</a>'); return; }
+      fetches++; res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('contenido de la pagina');
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const port = srv.address().port;
+    const ctx = { runtime: { settings: {} } };
+    try {
+      // fetch repetido: el segundo no vuelve a pedir a la red
+      let r1 = await WebFetch.run({ url: `http://127.0.0.1:${port}/page` }, ctx);
+      let r2 = await WebFetch.run({ url: `http://127.0.0.1:${port}/page` }, ctx);
+      assert(fetches === 1, `el fetch no se repite (fue ${fetches} veces)`);
+      assert(r2.content.includes('already fetched'), 'avisa que ya lo consultó');
+      assert(r1.content.includes('contenido de la pagina') && r2.content.includes('contenido de la pagina'), 'devuelve el mismo contenido');
+    } finally { srv.close(); }
+  });
+
   await t('Bash: detecta falta de administrador y le pasa al usuario el comando para ejecutarlo', async (assert) => {
     const { needsElevation, elevatedHint, Bash } = await import('../src/tools/bash.js');
     assert(['Administrator rights are required', 'Access to the path is denied', 'El acceso denegado', 'requires elevation'].every(needsElevation), 'reconoce los errores de admin');

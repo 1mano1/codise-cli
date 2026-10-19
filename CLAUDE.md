@@ -522,3 +522,17 @@ con `/rewind`.
   red y sugiere Tailscale (red privada cifrada entre los equipos; no abrir puertos al internet).
 - No hace falta cambiar el núcleo: el proveedor es una baseUrl, así que con la IP 100.x de Tailscale funciona
   igual desde cualquier lado. README actualizado con los pasos.
+
+## Agente más decidido, menos vueltas (rama `feat/agent-decisiveness`)
+
+Problema: el modelo daba muchas vueltas (repetía búsquedas, probaba 10 rodeos para instalar/extraer algo que
+faltaba, 17 min en un turno con puros errores). Mejoras genéricas:
+- Bash: `missingProgram(salida)` detecta "command not found" / "not recognized" / "was not found" y `installHint`
+  da el `winget install …` (o brew/apt). Le muestra al usuario qué instalar (`ctx.ui.markdown`) y le dice al
+  modelo que NO busque rodeos. `needsElevation` ya hacía lo mismo para admin.
+- Bash errores seguidos: a los 3 errores en fila, se le pide parar y ver la causa raíz; a los 6, se detiene el
+  turno y se le pide ayuda al usuario (antes solo avisaba de releer archivos).
+- WebSearch/WebFetch: caché por sesión (`runtime.__webCache`). Si repite la misma búsqueda/URL, devuelve el
+  mismo resultado con una nota de "ya lo consultaste, no lo repitas" y no vuelve a la red.
+- Prompt: reglas de ser decidido (usar lo ya encontrado, no repetir, una solución a la vez) y saber cuándo parar
+  y pedir ayuda (programa faltante, admin, login, decisión del usuario).

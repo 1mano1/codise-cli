@@ -65,6 +65,7 @@ export function startMockLLM({ script = [], models = ['mock-coder:7b', 'mock-sma
         url: `http://127.0.0.1:${port}`,
         requests,
         push: (...steps) => queue.push(...steps),
+        drain: () => { queue.length = 0; }, // vacía los pasos no consumidos (p. ej. si un turno se detuvo antes)
         close: () => new Promise((r) => server.close(r)),
       }));
     });

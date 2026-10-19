@@ -10,6 +10,18 @@ import { L } from '../i18n.js';
 // Extensiones que ejecutan código: se avisa al usuario antes de bajarlas.
 const EXECUTABLE = /\.(exe|msi|msix|bat|cmd|com|scr|ps1|psm1|vbs|js|jse|wsf|dll|lnk|reg|jar|apk|app|dmg|pkg|deb|rpm|sh|bash|run|bin|appimage)$/i;
 
+// Caché por sesión para no repetir la misma búsqueda o fetch (el modelo a veces insiste en lo mismo).
+function cached(ctx, key) {
+  const m = (ctx.runtime.__webCache ||= new Map());
+  return m.get(key);
+}
+function remember(ctx, key, result) {
+  const m = (ctx.runtime.__webCache ||= new Map());
+  if (m.size > 40) m.delete(m.keys().next().value); // tope simple
+  m.set(key, result);
+  return result;
+}
+
 function humanSize(n) {
   if (n >= 1 << 20) return `${(n / (1 << 20)).toFixed(1)} MB`;
   if (n >= 1 << 10) return `${(n / (1 << 10)).toFixed(0)} KB`;
@@ -55,17 +67,21 @@ export const WebFetch = {
     let url;
     try { url = new URL(a.url); } catch { throw new Error(L('URL inválida', 'Invalid URL')); }
     if (!/^https?:$/.test(url.protocol)) throw new Error(L('Solo se permiten URLs http o https', 'Only http and https URLs are allowed'));
+    const max = Number(a.max_chars) || 20000;
+    const key = `fetch:${url.href}:${max}`;
+    const hit = cached(ctx, key);
+    if (hit) return { ...hit, content: `${hit.content}\n\n[you already fetched this URL earlier; this is the same result. Do not fetch it again — use it.]` };
     const signal = AbortSignal.any ? AbortSignal.any([ctx.signal, AbortSignal.timeout(30000)].filter(Boolean)) : ctx.signal;
     const res = await fetch(url, { headers: { 'User-Agent': 'codice-cli', Accept: 'text/html,application/json,text/plain,*/*' }, signal, redirect: 'follow' });
     const type = res.headers.get('content-type') || '';
     const body = await res.text();
     const text = type.includes('html') ? htmlToText(body) : body;
-    const max = Number(a.max_chars) || 20000;
-    return {
+    const result = {
       content: `URL: ${res.url}\nStatus: ${res.status}\n\n${truncateMiddle(text, max)}`,
       display: `HTTP ${res.status} · ${text.length} ${L('caracteres', 'characters')}`,
       isError: !res.ok,
     };
+    return res.ok ? remember(ctx, key, result) : result;
   },
 };
 
@@ -277,6 +293,9 @@ export const WebSearch = {
     const blocked = Array.isArray(a.blocked_domains) ? a.blocked_domains : [];
     // con un solo dominio permitido, se le pide al buscador directamente
     const q = allowed.length === 1 ? `${a.query} site:${allowed[0]}` : a.query;
+    const key = `search:${q}:${allowed.join(',')}:${blocked.join(',')}:${count}`;
+    const hit = cached(ctx, key);
+    if (hit) return { ...hit, content: `${hit.content}\n\n[you already ran this exact search earlier; same results. Do not search the same thing again — use these results or try a concrete next step.]` };
     const signal = AbortSignal.any ? AbortSignal.any([ctx.signal, AbortSignal.timeout(20000)].filter(Boolean)) : ctx.signal;
     const errors = [];
     for (const eng of searchEngines(ctx.runtime?.settings)) {
@@ -286,7 +305,7 @@ export const WebSearch = {
         if (!results.length && raw.length) return { content: 'No results match the domain filters.', display: L('0 resultados', '0 results') };
         if (!results.length) { errors.push(`${eng.name}: 0`); continue; }
         const text = results.map((r) => `- ${r.title}${r.age ? ` (${r.age})` : ''}\n  ${r.url}\n  ${r.snippet}`).join('\n');
-        return { content: `${text}\n\n(engine: ${eng.name})`, display: L(`${results.length} resultados · ${eng.name}`, `${results.length} results · ${eng.name}`) };
+        return remember(ctx, key, { content: `${text}\n\n(engine: ${eng.name})`, display: L(`${results.length} resultados · ${eng.name}`, `${results.length} results · ${eng.name}`) });
       } catch (e) {
         if (ctx.signal?.aborted) throw e;
         errors.push(`${eng.name}: ${e.message}`);

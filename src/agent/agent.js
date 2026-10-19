@@ -326,10 +326,15 @@ export class Agent {
         this.view.notice(msg);
         return { text: msg, turns, tokens: this.usage.input + this.usage.output, stuck: true };
       }
+      // errores seguidos: en vez de probar mil rodeos, se le hace parar a pensar la causa y, si sigue, se detiene
       this.errorStreak = results.every((r) => r.isError) ? this.errorStreak + 1 : 0;
-      if (this.errorStreak >= 3) {
-        this.errorStreak = 0;
-        this.messages.push({ role: 'user', content: 'Several attempts in a row failed. Before trying again: use Read to see the CURRENT content of the relevant files, briefly explain what is wrong, then make one careful change.' });
+      if (this.errorStreak >= 6) {
+        const msg = L('Detuve la tarea: varios comandos seguidos fallaron sin avanzar. Suele faltar un programa o un permiso. Dime cómo seguir o instala lo que falte.', 'I stopped the task: many commands in a row failed without progress. Usually a program or a permission is missing. Tell me how to continue or install what is missing.');
+        this.view.notice(msg);
+        return { text: msg, turns, tools: this.toolCount, tokens: this.usage.input + this.usage.output, stuck: true };
+      }
+      if (this.errorStreak === 3) {
+        this.messages.push({ role: 'user', content: 'Several attempts in a row failed. Stop trying variations. Identify the single root cause (a missing program or dependency, a permission, a wrong path, a syntax error). If something is not installed or needs the user, stop and tell the user exactly what to do instead of trying more workarounds. For a file edit, Read the current content first. Then take at most one well-reasoned action.' });
       }
     }
     return { text: `${finalText}\n\n${L(`(Se alcanzó el límite de ${maxTurns} pasos.)`, `(Reached the limit of ${maxTurns} steps.)`)}`, turns, tokens: this.usage.input + this.usage.output };

@@ -108,6 +108,39 @@ export function elevatedHint(command) {
   );
 }
 
+// ¿El comando falló porque un programa no está instalado? Devuelve el nombre del programa o null.
+export function missingProgram(output) {
+  const s = String(output || '');
+  const m = s.match(/bash: (?:line \d+: )?([\w.+-]+): command not found/i)
+    || s.match(/([\w.+-]+): command not found/i)
+    || s.match(/'([\w.+-]+)' is not recognized as an? (?:internal|external) command/i)
+    || s.match(/no se reconoce.*?'([\w.+-]+)'/i)
+    || s.match(/(\bpython\b) was not found/i)
+    || s.match(/([\w.+-]+): not found/i);
+  if (!m) return null;
+  const name = m[1].trim();
+  // se ignoran rutas y cosas que no son un ejecutable suelto
+  if (!name || name.includes('/') || name.includes('\\') || name.length > 40) return null;
+  return name;
+}
+
+// Cómo instalar un programa conocido (Windows con winget por defecto).
+const WINGET = {
+  '7z': '7zip.7zip', '7za': '7zip.7zip', python: 'Python.Python.3.12', python3: 'Python.Python.3.12',
+  git: 'Git.Git', node: 'OpenJS.NodeJS', make: 'GnuWin32.Make', gcc: 'MSYS2.MSYS2', cmake: 'Kitware.CMake',
+  ffmpeg: 'Gyan.FFmpeg', jq: 'jqlang.jq', wget: 'JernejSimoncic.Wget', rg: 'BurntSushi.ripgrep.MSVC',
+  docker: 'Docker.DockerDesktop', gh: 'GitHub.cli', go: 'GoLang.Go', rustc: 'Rustlang.Rustup', cargo: 'Rustlang.Rustup',
+};
+export function installHint(program) {
+  const p = String(program).toLowerCase();
+  if (process.platform === 'win32') {
+    const id = WINGET[p];
+    return id ? `winget install ${id}` : `winget search ${program}`;
+  }
+  if (process.platform === 'darwin') return `brew install ${program}`;
+  return `sudo apt install ${program}`;
+}
+
 // La línea más informativa de una salida con error (no "Node.js v22…" ni líneas vacías).
 export function errorLine(lines) {
   const useful = lines.map((l) => l.trim()).filter((l) => l && !/^Node\.js v\d/.test(l) && !/^at /.test(l) && l !== '^');
@@ -180,12 +213,21 @@ export const Bash = {
       ctx.ui?.markdown?.(`${L('⚡ Administrador necesario', '⚡ Administrator needed')}\n${elevatedHint(command)}`);
       out += '\n[this command needs Administrator rights on Windows and cannot run from this shell. I have shown the user the exact command to run in an elevated PowerShell. Do not retry it; continue with the rest of the task.]';
     }
+    // un programa que no está instalado: no sirve probar mil rodeos, hay que avisarle al usuario qué instalar
+    const missing = r.code !== 0 && !elevation && missingProgram(out);
+    if (missing) {
+      const how = installHint(missing);
+      ctx.ui?.markdown?.(L(`📦 Falta "${missing}"\nNo está instalado en tu sistema. Instálalo y vuelve a intentar:\n  ${how}`, `📦 "${missing}" is missing\nIt is not installed on your system. Install it and try again:\n  ${how}`));
+      out += `\n[the program "${missing}" is not installed. Do not try to work around this with other tools or downloads; tell the user to install it (${how}) and continue with what does not need it.]`;
+    }
     const lines = out ? out.split('\n') : [];
     const display = r.code === 0
       ? (lines.length ? `${lines.slice(0, 3).join('\n')}${lines.length > 3 ? L(`\n… ${lines.length - 3} líneas más`, `\n… ${lines.length - 3} more lines`) : ''}` : L('Sin salida', 'No output'))
       : elevation
         ? L('Necesita Administrador · te pasé el comando para ejecutarlo', 'Needs Administrator · I gave you the command to run it')
-        : `${L('Código de salida', 'Exit code')} ${r.code}${errorLine(lines) ? ` · ${errorLine(lines).slice(0, 120)}` : ''}`;
+        : missing
+          ? L(`Falta "${missing}" · te dije cómo instalarlo`, `"${missing}" is missing · I told you how to install it`)
+          : `${L('Código de salida', 'Exit code')} ${r.code}${errorLine(lines) ? ` · ${errorLine(lines).slice(0, 120)}` : ''}`;
     return {
       content: `${out || '(no output)'}${r.code !== 0 ? `\n[exit code ${r.code}]` : ''}`,
       display,

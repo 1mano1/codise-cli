@@ -234,6 +234,19 @@ export async function e2eTests(t) {
       assert(b.temperature === 0.6 && b.top_k === 20 && b.top_p === 0.95 && b.presence_penalty === 1, `petición con el muestreo: ${JSON.stringify({ t: b.temperature, k: b.top_k })}`);
     });
 
+    await t('decisión: tras varios comandos fallidos seguidos, se detiene y pide ayuda (no da vueltas)', async (assert) => {
+      const proj = path.join(work, 'proyecto-errores');
+      fs.mkdirSync(path.join(proj, '.git'), { recursive: true });
+      // 8 intentos que siempre fallan (como el modelo probando mil rodeos)
+      for (let i = 0; i < 8; i++) m.push({ toolCalls: [{ name: 'Bash', args: { command: `herramienta_inexistente_${i} --x` } }] });
+      m.push({ content: 'No debería llegar aquí.' });
+      const before = m.requests.length;
+      const r = await runCli(['--yolo', ...base, '-p', 'haz la tarea'], { cwd: proj, home });
+      assert(/varios comandos seguidos fallaron|many commands in a row failed/i.test(r.stdout + r.stderr), `se detuvo y avisó: ${r.stdout.slice(-300)}`);
+      assert(m.requests.length - before <= 7, `no agotó todos los intentos (${m.requests.length - before} peticiones)`);
+      m.drain(); // quita los pasos que no se consumieron para no contaminar otras pruebas
+    });
+
     await t('compactación: /compact, respaldo sin modelo y automática al llenarse', async (assert) => {
       // manual: el resumen sustituye la conversación y conserva las tareas y archivos
       m.push({ content: 'Primera respuesta.' }, { content: '1. Primary request: probar la compactación.' }, { content: 'Sigo.' });
