@@ -402,6 +402,53 @@ export async function unitTests(t) {
     assert(box.state === 'prompt', 'al cerrar el diálogo se pasa a escribir');
   });
 
+  await t('Download: guarda un archivo a disco, usa el nombre de la URL en carpetas y respeta el límite', async (assert) => {
+    const { Download } = await import('../src/tools/web.js');
+    const http = await import('node:http');
+    const srv = http.createServer((req, res) => {
+      if (req.url === '/big') { res.writeHead(200); res.end(Buffer.alloc(2 << 20)); return; } // 2 MB
+      if (req.url === '/missing') { res.writeHead(404); res.end('no'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+      res.end(Buffer.from('CONTENIDO-BINARIO'));
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const base = `http://127.0.0.1:${srv.address().port}`;
+    const dir = tmp();
+    const ctx = { cwd: dir, runtime: { readFiles: new Set() } };
+    try {
+      // a una carpeta: toma el nombre del archivo de la URL
+      let r = await Download.run({ url: `${base}/assets/tool-v1.bin`, path: 'bin/' }, ctx);
+      assert(!r.isError && fs.readFileSync(path.join(dir, 'bin', 'tool-v1.bin'), 'utf8') === 'CONTENIDO-BINARIO', `guarda en carpeta: ${r.display}`);
+      // a una ruta con nombre explícito
+      r = await Download.run({ url: `${base}/x`, path: 'descargado.dat' }, ctx);
+      assert(!r.isError && fs.existsSync(path.join(dir, 'descargado.dat')), 'guarda con nombre dado');
+      // sin path: nombre de la URL en el cwd
+      r = await Download.run({ url: `${base}/otro.zip` }, ctx);
+      assert(fs.existsSync(path.join(dir, 'otro.zip')), 'sin path usa el nombre de la URL');
+      // límite de tamaño: 2 MB con tope de 1 MB → falla y no deja archivo a medias
+      r = await Download.run({ url: `${base}/big`, path: 'grande.bin', max_mb: 1 }, ctx);
+      assert(r.isError && !fs.existsSync(path.join(dir, 'grande.bin')), `corta por tamaño y limpia: ${r.display}`);
+      // 404
+      r = await Download.run({ url: `${base}/missing`, path: 'y' }, ctx);
+      assert(r.isError && /404/.test(r.display), '404');
+      // solo http/https
+      let threw = false;
+      try { await Download.run({ url: 'file:///etc/passwd', path: 'z' }, ctx); } catch { threw = true; }
+      assert(threw, 'rechaza esquemas no http');
+      assert(Download.network && Download.edits, 'es de red y escribe (pasa por permisos)');
+      // seguridad: checksum y aviso de ejecutable
+      const { createHash } = await import('node:crypto');
+      const sum = createHash('sha256').update('CONTENIDO-BINARIO').digest('hex');
+      r = await Download.run({ url: `${base}/x`, path: 'verificado.bin', sha256: sum }, ctx);
+      assert(!r.isError && /checksum verificado|checksum verified/i.test(r.content), `sha256 correcto verifica: ${r.content}`);
+      r = await Download.run({ url: `${base}/x`, path: 'manipulado.bin', sha256: 'abc123' }, ctx);
+      assert(r.isError && !fs.existsSync(path.join(dir, 'manipulado.bin')) && /mismatch/i.test(r.content), 'sha256 distinto borra el archivo');
+      r = await Download.run({ url: `${base}/installer.exe`, path: 'app/' }, ctx);
+      assert(/executable|ejecutable/i.test(r.content) && /sha256:/.test(r.content), `avisa de ejecutable y da el sha256: ${r.content}`);
+      assert(Download.preview({ url: `${base}/s.msi`, path: 'bin/' }, ctx).command.includes('⚠'), 'el permiso avisa que es ejecutable');
+    } finally { srv.close(); }
+  });
+
   await t('Bash: detecta falta de administrador y le pasa al usuario el comando para ejecutarlo', async (assert) => {
     const { needsElevation, elevatedHint, Bash } = await import('../src/tools/bash.js');
     assert(['Administrator rights are required', 'Access to the path is denied', 'El acceso denegado', 'requires elevation'].every(needsElevation), 'reconoce los errores de admin');

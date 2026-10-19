@@ -1,6 +1,20 @@
-// Red: WebFetch y WebSearch. Desactivadas con --offline.
-import { truncateMiddle } from '../util/fs.js';
+// Red: WebFetch, WebSearch y Download. Desactivadas con --offline.
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { truncateMiddle, relPath, resolvePath } from '../util/fs.js';
 import { L } from '../i18n.js';
+
+// Extensiones que ejecutan código: se avisa al usuario antes de bajarlas.
+const EXECUTABLE = /\.(exe|msi|msix|bat|cmd|com|scr|ps1|psm1|vbs|js|jse|wsf|dll|lnk|reg|jar|apk|app|dmg|pkg|deb|rpm|sh|bash|run|bin|appimage)$/i;
+
+function humanSize(n) {
+  if (n >= 1 << 20) return `${(n / (1 << 20)).toFixed(1)} MB`;
+  if (n >= 1 << 10) return `${(n / (1 << 10)).toFixed(0)} KB`;
+  return `${n} B`;
+}
 
 export function htmlToText(html) {
   return String(html)
@@ -54,6 +68,81 @@ export const WebFetch = {
     };
   },
 };
+
+export const Download = {
+  name: 'Download',
+  network: true,
+  edits: true, // escribe un archivo: pasa por el diálogo de permisos como Write/Bash
+  description: 'Download a file from a URL and save it to disk (archives, installers, binaries, datasets, releases). Use this instead of WebFetch when you need the actual file, not its text. Follows redirects. Prefer the official source, and pass the published sha256 when the site lists one so the download is verified. Never download from a source the user did not ask for or trust.',
+  parameters: {
+    type: 'object',
+    properties: {
+      url: { type: 'string', description: 'Full URL to download (http/https). Use the official/vendor source.' },
+      path: { type: 'string', description: 'Where to save it (relative to the working directory). If it is a folder or ends with /, the file name is taken from the URL.' },
+      sha256: { type: 'string', description: 'Expected SHA-256 checksum (from the official page). If given and it does not match, the file is deleted.' },
+      max_mb: { type: 'number', description: 'Maximum size in MB (default 500)' },
+    },
+    required: ['url'],
+  },
+  summary: (a) => a.url,
+  permissionKey: (a, ctx) => { try { return `${new URL(a.url).hostname} → ${relPath(destPath(a, ctx), ctx.cwd)}`; } catch { return a.url; } },
+  preview: (a, ctx) => {
+    let host = ''; try { host = new URL(a.url).hostname; } catch { /* url inválida */ }
+    const dest = (() => { try { return relPath(destPath(a, ctx), ctx.cwd); } catch { return a.path || ''; } })();
+    const warn = EXECUTABLE.test(dest) ? L('  ⚠ es un ejecutable: revisa que la fuente sea oficial y de confianza', '  ⚠ this is an executable: make sure the source is official and trusted') : '';
+    return { kind: 'command', command: `${L('Descargar de', 'Download from')} ${host} → ${dest}${a.sha256 ? L('  (se verifica el checksum)', '  (checksum verified)') : ''}${warn}`, description: a.url };
+  },
+  async run(a, ctx) {
+    let url;
+    try { url = new URL(a.url); } catch { throw new Error(L('URL inválida', 'Invalid URL')); }
+    if (!/^https?:$/.test(url.protocol)) throw new Error(L('Solo se permiten URLs http o https', 'Only http and https URLs are allowed'));
+    const dest = destPath(a, ctx);
+    const maxBytes = Math.max(1, Number(a.max_mb) || 500) * (1 << 20);
+    const signal = AbortSignal.any ? AbortSignal.any([ctx.signal, AbortSignal.timeout(600000)].filter(Boolean)) : ctx.signal;
+    const res = await fetch(url, { headers: { 'User-Agent': 'codice-cli', Accept: '*/*' }, signal, redirect: 'follow' });
+    if (!res.ok) return { content: `Download failed: HTTP ${res.status} for ${res.url}`, display: `HTTP ${res.status}`, isError: true };
+    const declared = Number(res.headers.get('content-length')) || 0;
+    if (declared > maxBytes) return { content: `File is ${humanSize(declared)}, over the ${a.max_mb || 500} MB limit. Raise max_mb if you really want it.`, display: L('demasiado grande', 'too large'), isError: true };
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    // se escribe por streaming para no cargar el archivo entero en memoria, cortando si pasa el límite, y se
+    // calcula el sha256 al vuelo para poder verificar que el archivo es el que publica la fuente oficial
+    let written = 0;
+    const hash = crypto.createHash('sha256');
+    const cap = new Transform({
+      transform(chunk, _enc, cb) { written += chunk.length; if (written > maxBytes) { cb(new Error(`exceeded ${a.max_mb || 500} MB`)); } else { hash.update(chunk); cb(null, chunk); } },
+    });
+    try {
+      await pipeline(Readable.fromWeb(res.body), cap, fs.createWriteStream(dest));
+    } catch (e) {
+      try { fs.unlinkSync(dest); } catch { /* ya no está */ }
+      if (e?.name === 'AbortError' || ctx.signal?.aborted) throw Object.assign(new Error(L('Interrumpido por el usuario', 'Interrupted by the user')), { name: 'AbortError' });
+      return { content: `Download failed after ${humanSize(written)}: ${e.message}`, display: L('falló la descarga', 'download failed'), isError: true };
+    }
+    const rel = relPath(dest, ctx.cwd);
+    const sum = hash.digest('hex');
+    // checksum esperado: si no coincide, el archivo pudo ser manipulado; se borra
+    if (a.sha256 && a.sha256.trim().toLowerCase() !== sum) {
+      try { fs.unlinkSync(dest); } catch { /* ya no está */ }
+      return { content: `Checksum mismatch: expected ${a.sha256.trim()} but got ${sum}. The file was NOT what the official source published, so it was deleted. Do not use it.`, display: L('checksum no coincide · borrado', 'checksum mismatch · deleted'), isError: true };
+    }
+    ctx.runtime.readFiles?.add(dest);
+    const verified = a.sha256 ? L(' · checksum verificado ✓', ' · checksum verified ✓') : '';
+    const exe = EXECUTABLE.test(rel)
+      ? L(`\n[Es un ejecutable. No lo ejecutes sin que el usuario confirme que la fuente (${res.url}) es oficial y de confianza.${a.sha256 ? '' : ' Si la página oficial publica un sha256, descárgalo de nuevo con ese sha256 para verificarlo.'}]`, `\n[This is an executable. Do not run it unless the user confirms the source (${res.url}) is official and trusted.${a.sha256 ? '' : ' If the official page lists a sha256, download again with it to verify.'}]`)
+      : '';
+    return { content: `Saved ${humanSize(written)} to ${rel}\nsha256: ${sum}${verified}${exe}`, display: `${rel} · ${humanSize(written)}${verified}`, isError: false };
+  },
+};
+
+function destPath(a, ctx) {
+  const fromUrl = () => { try { return decodeURIComponent(new URL(a.url).pathname.split('/').filter(Boolean).pop() || '') || 'download'; } catch { return 'download'; } };
+  let p = String(a.path || '').trim();
+  if (!p) return resolvePath(fromUrl(), ctx.cwd);
+  const abs = resolvePath(p, ctx.cwd);
+  // si apunta a una carpeta (existente o con barra final), se usa el nombre del archivo de la URL
+  if (p.endsWith('/') || p.endsWith('\\') || (fs.existsSync(abs) && fs.statSync(abs).isDirectory())) return path.join(abs, fromUrl());
+  return abs;
+}
 
 // ── Búsqueda web ─────────────────────────────────────────────────
 // Motores: Brave y Tavily (con clave, gratis hasta cierto uso), SearXNG (servidor propio) y DuckDuckGo (sin clave).
