@@ -402,6 +402,12 @@ export async function unitTests(t) {
     assert(box.state === 'prompt', 'al cerrar el diálogo se pasa a escribir');
   });
 
+  await t('red local: se reconoce una dirección que solo sirve en la misma red (para sugerir Tailscale)', async (assert) => {
+    const { isLanUrl } = await import('../src/commands/builtin.js');
+    assert(['http://192.168.1.69:8081/v1', 'http://10.0.0.5:1234', 'http://172.20.1.1', 'http://mipc.local:8080'].every(isLanUrl), 'IPs privadas y .local son de red local');
+    assert(!['http://100.101.102.103:8081', 'http://localhost:1234', 'https://api.openai.com/v1', 'not a url'].some(isLanUrl), 'Tailscale 100.x, localhost y la nube no son "solo red local"');
+  });
+
   await t('Download: guarda un archivo a disco, usa el nombre de la URL en carpetas y respeta el límite', async (assert) => {
     const { Download } = await import('../src/tools/web.js');
     const http = await import('node:http');

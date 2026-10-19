@@ -514,3 +514,11 @@ con `/rewind`.
   prompt le dice al modelo: solo fuentes oficiales, pasar el sha256 si la página lo publica, no ejecutar sin que
   el usuario confirme. No hay antivirus; la verificación es de integridad/procedencia, no de contenido.
 - Prompt: para bajar archivos usar Download, no WebFetch; el modelo ya no debe decir que no puede descargar.
+
+## Acceso remoto fuera de la red (rama `feat/remote-access-hint`)
+
+- `isLanUrl(url)` (en builtin.js): detecta direcciones solo-red-local (192.168/10/172.16-31 y .local); 100.x
+  (Tailscale), localhost y la nube no cuentan. `/provider add` con una IP local avisa que solo sirve en la misma
+  red y sugiere Tailscale (red privada cifrada entre los equipos; no abrir puertos al internet).
+- No hace falta cambiar el núcleo: el proveedor es una baseUrl, así que con la IP 100.x de Tailscale funciona
+  igual desde cualquier lado. README actualizado con los pasos.
