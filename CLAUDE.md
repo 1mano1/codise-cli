@@ -364,6 +364,7 @@ Problemas reportados al probarla y solución:
   `CODICE_GZIP=0` lo apaga. Si un servidor responde 400/415/422 al cuerpo comprimido, se reenvía sin comprimir y
   se recuerda para ese servidor durante la ejecución.
 - `codice serve` descomprime el cuerpo antes de pasarlo a Ollama/llama.cpp (que no aceptan gzip).
+
 ## Diseño de la consola: bienvenida arriba, caja abajo, paneles (rama `fix/console-layout`)
 
 - `live.js` lleva `contentRow` (renglón donde termina la conversación). La conversación crece desde arriba y la
