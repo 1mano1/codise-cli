@@ -575,3 +575,13 @@ Dos bloqueos genéricos que el usuario documentó al ver al agente atascarse en 
   devuelve al instante una nota pidiendo usar las herramientas Glob (por nombre) o Grep (por contenido), o una
   carpeta concreta. No marca búsquedas en subcarpetas (`find /c/Proyecto/… -name`).
 - Regla en el prompt: usar Glob/Grep, nunca `find`/`grep -r` sobre todo el disco.
+
+## Compactación que sí reduce + aceptar comandos por sesión (rama `fix/compaction-and-session-accept`)
+
+- Bug: la compactación no liberaba espacio (8.6k → 8.6k) porque el resumen salía tan largo como la conversación,
+  y se repetía casi cada turno sin avanzar. Ahora `summarize` recibe `maxTokens`: el prompt pide un máximo de
+  palabras y se manda `max_tokens` al modelo. `compact()` limita el resumen a ~20 % de la ventana. Guarda en
+  `lastCompaction` y `maybeCompact` no vuelve a compactar si la última no redujo (evita el bucle).
+- Permisos: `acceptEdits` (shift+tab) solo acepta ediciones, no comandos (por diseño) → en tareas con muchos Bash
+  seguía preguntando. Nueva opción en el diálogo: "Sí, y no preguntar más en esta sesión" (`choice: 'session'`),
+  que pasa a `bypass` solo en memoria (no se guarda; al reabrir vuelve a default). El usuario acepta el riesgo.

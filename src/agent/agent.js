@@ -577,6 +577,9 @@ export class Agent {
     if (!ratio || this.messages.length < 4) return;
     const { used, max } = this.contextUsage(tools);
     if (used < max * ratio) return;
+    // si la última compactación no redujo (el modelo ignoró el límite), no re-compactar cada turno: esperar a que
+    // entren mensajes nuevos antes de volver a intentarlo, para no quedarse atascado resumiendo lo mismo
+    if (this.lastCompaction && this.lastCompaction.after > this.lastCompaction.before * 0.7 && this.messages.length <= (this.lastCompaction.len || 0) + 3) return;
     await this.compact({ signal, auto: true });
   }
 
@@ -592,9 +595,11 @@ export class Agent {
     if (!head.length) return null;
     const before = estimateContext('', this.messages);
     this.view.compacting?.(auto);
+    // el resumen se limita a ~20 % de la ventana para que la compactación de verdad libere espacio
+    const summaryBudget = Math.max(800, Math.floor(window * 0.2));
     let summary;
     try {
-      summary = await summarize(this.client(), head, { instructions, signal, budget: Math.floor(window * 0.6) });
+      summary = await summarize(this.client(), head, { instructions, signal, budget: Math.floor(window * 0.6), maxTokens: summaryBudget });
     } catch (e) {
       if (e.name === 'AbortError' || signal?.aborted) { this.view.pause(); throw e; }
       // el modelo no pudo resumir: se conserva lo esencial sin él para poder seguir
@@ -612,7 +617,7 @@ export class Agent {
       this.messages.push({ role: 'user', content: 'Continue with the pending task.' });
     }
     const after = estimateContext('', this.messages);
-    this.lastCompaction = { before, after, at: Date.now(), auto };
+    this.lastCompaction = { before, after, at: Date.now(), auto, len: this.messages.length };
     this.view.compacted?.(before, after);
     return summary;
   }

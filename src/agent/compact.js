@@ -44,18 +44,22 @@ Write these sections, in the same language the user used:
 7. Next step: the next action, consistent with the user's latest request. Quote the latest request verbatim.
 Be precise and dense. Do not invent anything that is not in the session.`;
 
-export async function summarize(client, messages, { instructions = '', signal, budget = Infinity } = {}) {
-  const prompt = `${SUMMARY_PROMPT}${instructions ? `\nAdditional instructions: ${instructions}` : ''}
+export async function summarize(client, messages, { instructions = '', signal, budget = Infinity, maxTokens = 0 } = {}) {
+  // el resumen DEBE ser más corto que la conversación o la compactación no libera espacio y se repite cada turno
+  const words = maxTokens ? Math.max(150, Math.round(maxTokens / 1.3)) : 0;
+  const limit = words ? `\n\nHard limit: write the whole summary in at most ${words} words. Be terse — keep only what is needed to continue; drop routine command output, repeated attempts and dead ends. If you run long, you lose context, so stay well under the limit.` : '';
+  const prompt = `${SUMMARY_PROMPT}${instructions ? `\nAdditional instructions: ${instructions}` : ''}${limit}
 
 <session>
 ${transcript(messages, budget)}
 </session>`;
   const r = await client.chat({
     messages: [
-      { role: 'system', content: 'You write precise, dense summaries of software engineering sessions.' },
+      { role: 'system', content: 'You write precise, dense summaries of software engineering sessions. You are concise and never exceed the requested length.' },
       { role: 'user', content: prompt },
     ],
     signal,
+    maxTokens: maxTokens || undefined, // techo duro para que no genere un resumen enorme
   });
   return stripThinking(r.content);
 }
