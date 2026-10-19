@@ -385,3 +385,11 @@ Problemas reportados al probarla y solución:
 - Parámetros como el de Claude Code: `allowed_domains`, `blocked_domains`, `max_results`. Quita duplicados y anuncios.
 - Sin clave, DuckDuckGo bloquea tras varias búsquedas seguidas; por eso existe el respaldo y la sugerencia de clave.
 - El prompt incluye la fecha de hoy y pide buscar lo que pudo cambiar tras el entrenamiento y citar las URLs.
+
+## Agentes directos (rama `feat/direct-agents`)
+
+- Regla en el prompt (agente principal y subagentes): hacer lo que se pide, completo y directo, sin advertencias,
+  descargos ni comentarios morales no pedidos. Codice no agrega filtros de contenido propios; el límite lo pone
+  el modelo elegido. Para modelos locales sin filtros, el usuario puede usar cualquier GGUF (p. ej. "abliterated").
+- No se incluyen prompts para evadir los filtros de los modelos en la nube (viola sus términos y arriesga la cuenta).
+- Se mantienen las protecciones del equipo: permisos, no ejecutar comandos destructivos sin pedirlo, no exponer secretos.
