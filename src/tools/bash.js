@@ -191,6 +191,14 @@ export function missingProgram(output) {
   return name;
 }
 
+// ¿El comando busca en todo el disco/raíz? (find /, find /c, grep -r … /). En Windows es lentísimo y puede colgarse.
+export function wholeDriveScan(command) {
+  const s = String(command || '');
+  if (/\bfind\s+"?\/(c|d|e|[a-z])?\/?"?(\s+-|\s*(\||;|&|$))/i.test(s)) return 'find';
+  if (/\bgrep\s+-[a-z]*[rR][a-z]*\b[^|;&]*\s"?\/(c|[a-z])?\/?"?(\s|$)/i.test(s)) return 'grep';
+  return null;
+}
+
 // Cómo instalar un programa conocido (Windows con winget por defecto).
 const WINGET = {
   '7z': '7zip.7zip', '7za': '7zip.7zip', python: 'Python.Python.3.12', python3: 'Python.Python.3.12',
@@ -238,6 +246,15 @@ export const Bash = {
     timeout = Math.min(Math.max(timeout, 1000), 600000);
     const rt = ctx.runtime;
     const command = String(a.command);
+    // búsqueda en todo el disco (find /c, grep -r /): no se ejecuta, se redirige a las herramientas rápidas, que
+    // en Windows son muchísimo más veloces y no se cuelgan con las junctions del sistema
+    if (process.platform === 'win32' && wholeDriveScan(command)) {
+      return {
+        content: 'Not run: this searches the whole drive, which is extremely slow on Windows and can hang. Use the Glob tool to find files by name/pattern (e.g. "**/pcap.h"), or the Grep tool to search file contents. If you really need a shell search, point it at a specific folder, not / or /c.',
+        display: L('búsqueda en todo el disco evitada · usa Glob/Grep', 'whole-drive search avoided · use Glob/Grep'),
+        isError: true,
+      };
+    }
     // muestra en vivo la última línea de salida en el spinner, para que un comando largo no parezca trabado
     const onProgress = (line) => rt.spinner?.active && rt.spinner.setVerb?.(`Bash · ${line.length > 72 ? `${line.slice(0, 71)}…` : line}`);
     const base = { cwd: ctx.cwd, timeout, signal: ctx.signal, shell: detectShell(rt.settings), onProgress };

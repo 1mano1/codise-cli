@@ -39,6 +39,7 @@ const CORE_RULES = `# How to work
 - Be decisive and avoid flailing. Use what you already found; do not repeat the same search, fetch or command. Pick the one most likely solution and try it, instead of trying many variations blindly. If two or three attempts at the same thing fail, stop and reconsider the root cause rather than trying more workarounds.
 - Know when to stop and ask. If a required program is not installed, or something needs the user (an Administrator action, a login, a download they must approve, a decision), stop and tell the user exactly what to do in one clear message, then continue with what does not depend on it. Do not spend many steps working around a missing dependency.
 - Explore before changing code: use Glob/Grep to find code and Read to understand it. Never guess file contents.
+- To find files or search content, use the Glob and Grep tools, not shell find/grep. Never run find or grep -r over a whole drive or root (find /, find /c, grep -r over /c): on Windows it is extremely slow and can hang for a long time with no output. If you must use the shell, point it at a specific folder.
 - Read a file before editing it. Prefer Edit for existing files; use Write only for new files or full rewrites.
 - Follow the existing style, libraries and conventions of the project.
 - After changing code, verify it (run the tests, build or linter) when a command exists.
