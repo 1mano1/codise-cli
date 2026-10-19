@@ -548,3 +548,9 @@ Dos bloqueos genéricos que el usuario documentó al ver al agente atascarse en 
 - **PowerShell inline desde Git Bash rompía las comillas/`$_`**. Regla en el prompt (solo Windows + Git Bash):
   preferir comandos bash; para PowerShell no trivial, escribir un `.ps1` y correrlo con
   `powershell -NoProfile -ExecutionPolicy Bypass -File script.ps1`, no `-Command "…"` inline.
+
+## Salida en vivo de Bash (rama `feat/bash-live-output`)
+
+- Un comando largo (install, build, test) no mostraba nada hasta terminar y parecía trabado. Ahora `runShell`
+  acepta `onProgress`; el Bash tool la conecta al spinner (`rt.spinner.setVerb('Bash · <última línea>')`), así se
+  ve la última línea de salida y el tiempo corriendo mientras trabaja. No cambia el resultado final.

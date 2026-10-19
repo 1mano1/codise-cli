@@ -515,6 +515,14 @@ export async function unitTests(t) {
     assert(/Do not retry/.test(r.content), 'le dice al modelo que no reintente');
   });
 
+  await t('Bash: informa la salida en vivo mientras corre (para que un comando largo no parezca trabado)', async (assert) => {
+    const { runShell } = await import('../src/tools/bash.js');
+    const seen = [];
+    await runShell('echo linea-uno; sleep 0.3; echo linea-dos; sleep 0.3; echo linea-tres', { cwd: ROOT, onProgress: (l) => seen.push(l), timeout: 15000 });
+    assert(seen.length >= 2, `recibe progreso en varias tandas (${seen.length})`);
+    assert(seen.at(-1) === 'linea-tres', `la última línea es la final: ${seen.at(-1)}`);
+  });
+
   await t('Bash: un timeout pequeño se entiende como segundos (no mata el comando en milisegundos)', async (assert) => {
     const { Bash } = await import('../src/tools/bash.js');
     const ctx = { cwd: ROOT, runtime: { settings: {}, projectRoot: ROOT } };
