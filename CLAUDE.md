@@ -366,3 +366,12 @@ Problemas reportados al probarla y solución:
   se muestran en un panel encima de la caja (`showPanel` en `select.js`, salida capturada con `captureOutput`);
   esc lo cierra y no queda en la conversación; ↑↓/PgUp/PgDn desplazan. Con lector de pantalla se imprimen.
 - La terminal virtual de pruebas (`test/fixtures/vt.js`) ahora tiene ventana visible e historial (`viewport()`).
+
+## Búsqueda web (rama `feat/web-search`)
+
+- `WebSearch` prueba motores en orden y pasa al siguiente si uno falla o lo bloquean: Brave (`BRAVE_API_KEY`),
+  Tavily (`TAVILY_API_KEY`), SearXNG propio (`SEARXNG_URL`) y, sin clave, DuckDuckGo (html y lite) y Bing.
+  En settings: `webSearch: { engine: 'auto'|'brave'|'tavily'|'searxng'|'duckduckgo'|'bing', braveKey, tavilyKey, searxngUrl }`.
+- Parámetros como el de Claude Code: `allowed_domains`, `blocked_domains`, `max_results`. Quita duplicados y anuncios.
+- Sin clave, DuckDuckGo bloquea tras varias búsquedas seguidas; por eso existe el respaldo y la sugerencia de clave.
+- El prompt incluye la fecha de hoy y pide buscar lo que pudo cambiar tras el entrenamiento y citar las URLs.

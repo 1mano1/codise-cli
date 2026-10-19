@@ -69,6 +69,7 @@ export function buildSystemPrompt(runtime, { agent, tools, toolMode, model }) {
     parts.push(`# Recent activity in this project (previous sessions)\nUse it to understand what was already done. If the user asks to continue, pick up from here.\n${formatActivity(runtime.recentActivity)}`);
   }
   if (!agent.def) parts.push('When you learn a durable fact about the project or the user (commands, conventions, decisions, preferences), save it with the Remember tool so future sessions know it.');
+  if (!runtime.offline && tools?.some((t) => t.name === 'WebSearch')) parts.push(`Today is ${new Date().toISOString().slice(0, 10)}. For anything that may have changed after your training (library versions, APIs, errors, news), search with WebSearch, read the best pages with WebFetch and cite the URLs you used.`);
   if (toolMode === 'prompt') parts.push(toolsPrompt(tools, { lean: runtime.isLean() }));
   return parts.filter(Boolean).join('\n\n');
 }

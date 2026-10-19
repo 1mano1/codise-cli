@@ -305,6 +305,32 @@ export async function unitTests(t) {
     assert(keepFromIndex(msgs) === msgs.length - 1, 'último pedido');
   });
 
+  await t('web: motores en orden, filtros por dominio y búsqueda con SearXNG propio', async (assert) => {
+    const W = await import('../src/tools/web.js');
+    const http = await import('node:http');
+    assert(W.searchEngines({}).map((e) => e.name).join() === 'duckduckgo,bing', 'sin claves: DuckDuckGo y Bing');
+    assert(W.searchEngines({ webSearch: { braveKey: 'k', searxngUrl: 'http://s' } }).map((e) => e.name).join() === 'brave,searxng,duckduckgo,bing', 'con claves primero');
+    assert(W.searchEngines({ webSearch: { engine: 'bing' } }).map((e) => e.name).join() === 'bing', 'motor fijo');
+    const res = [{ url: 'https://docs.python.org/a' }, { url: 'https://www.pinterest.com/x' }, { url: 'https://docs.python.org/a' }, { url: 'https://nodejs.org/b' }];
+    assert(W.filterResults(res, { blocked: ['pinterest.com'] }).length === 2, 'bloquea dominios y quita duplicados');
+    assert(W.filterResults(res, { allowed: ['python.org'] }).map((r) => r.url).join() === 'https://docs.python.org/a', 'permite subdominios');
+    assert(W.htmlToText('it&#x27;s &amp; &#233;') === "it's & é", 'entidades HTML');
+    let seenQ = '';
+    const srv = http.createServer((req, res2) => {
+      seenQ = new URL(req.url, 'http://x').searchParams.get('q');
+      res2.writeHead(200, { 'Content-Type': 'application/json' });
+      res2.end(JSON.stringify({ results: [{ title: 'Node 22', url: 'https://nodejs.org/en/blog/22', content: 'Release notes' }, { title: 'Spam', url: 'https://spam.example/x', content: '' }] }));
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    try {
+      const settings = { webSearch: { searxngUrl: `http://127.0.0.1:${srv.address().port}`, engine: 'searxng' } };
+      const r = await W.WebSearch.run({ query: 'node 22', blocked_domains: ['spam.example'] }, { runtime: { settings } });
+      assert(r.content.includes('https://nodejs.org/en/blog/22') && !r.content.includes('spam.example') && r.content.includes('engine: searxng'), `resultados: ${r.content}`);
+      await W.WebSearch.run({ query: 'fetch', allowed_domains: ['nodejs.org'] }, { runtime: { settings } });
+      assert(seenQ === 'fetch site:nodejs.org', `un dominio permitido se pasa al buscador: ${seenQ}`);
+    } finally { srv.close(); }
+  });
+
   await t('usage: costo estimado, histórico, límites y uso desde la cola', async (assert) => {
     const U = await import('../src/usage.js');
     const cost = U.estimateCost({ m1: { input: 3, output: 15, cached: 0.3 } }, 'p', 'm1', { input: 1e6, cached: 5e5, output: 1e5 });
