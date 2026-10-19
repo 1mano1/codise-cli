@@ -100,7 +100,7 @@ export function freshWindowsPath() {
 }
 
 // sandbox: { status, projectRoot, onStatus } para ejecutar el comando encerrado (ver src/sandbox.js).
-export async function runShell(command, { cwd, timeout = 120000, signal, shell, env, sandbox = null } = {}) {
+export async function runShell(command, { cwd, timeout = 120000, signal, shell, env, sandbox = null, onProgress = null } = {}) {
   const sh = shell || detectShell();
   let file = sh, args = argsFor(sh, command), extraEnv = {};
   if (sandbox) {
@@ -127,6 +127,11 @@ export async function runShell(command, { cwd, timeout = 120000, signal, shell, 
     const onData = (d) => {
       output += d.toString('utf8');
       if (output.length > 2_000_000) output = output.slice(-1_000_000);
+      // avisa en vivo con la última línea útil, para que un comando largo (install/build) no parezca trabado
+      if (onProgress) {
+        const last = output.replace(/\r/g, '\n').split('\n').map((l) => l.trim()).filter(Boolean).at(-1);
+        if (last) onProgress(last);
+      }
     };
     child.stdout.on('data', onData);
     child.stderr.on('data', onData);
@@ -223,7 +228,9 @@ export const Bash = {
     timeout = Math.min(Math.max(timeout, 1000), 600000);
     const rt = ctx.runtime;
     const command = String(a.command);
-    const base = { cwd: ctx.cwd, timeout, signal: ctx.signal, shell: detectShell(rt.settings) };
+    // muestra en vivo la última línea de salida en el spinner, para que un comando largo no parezca trabado
+    const onProgress = (line) => rt.spinner?.active && rt.spinner.setVerb?.(`Bash · ${line.length > 72 ? `${line.slice(0, 71)}…` : line}`);
+    const base = { cwd: ctx.cwd, timeout, signal: ctx.signal, shell: detectShell(rt.settings), onProgress };
     const boxed = (st) => ({ ...base, sandbox: { status: st, projectRoot: rt.projectRoot, onStatus: (m) => rt.spinner?.setVerb?.(m) } });
     let st = sandboxStatus(rt.settings);
     if (st.mode === 'strict' && !st.active) {
