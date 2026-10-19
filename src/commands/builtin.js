@@ -109,14 +109,28 @@ export const BUILTIN_COMMANDS = {
 
   provider: {
     get description() { return L('Cambia de proveedor (local, nube o PC remota) o añade uno', 'Switch provider (local, cloud or remote PC) or add one'); },
-    argumentHint: '[name] | add <name> <url> [ollama|openai|codice] [API_KEY_ENV]',
+    argumentHint: '[name] | add <name> <url> [ollama|openai|codice] [API_KEY | API_KEY_ENV]',
     async run(args, { runtime, repl }) {
       const [sub, ...rest] = args.trim().split(/\s+/).filter(Boolean);
       if (sub === 'add') {
-        const [name, url, type = 'openai', keyEnv] = rest;
-        if (!name || !url) return ui.warn(L('Uso: /provider add <nombre> <url> [ollama|openai|codice] [VARIABLE_API_KEY]', 'Usage: /provider add <name> <url> [ollama|openai|codice] [API_KEY_ENV]'));
-        runtime.save(`providers.${name}`, { type, baseUrl: url, ...(keyEnv ? { apiKeyEnv: keyEnv } : {}) });
-        return ui.success(L(`Proveedor ${name} añadido. Actívalo con /provider ${name}`, `Provider ${name} added. Activate it with /provider ${name}`));
+        let [name, url, type = 'openai', key] = rest;
+        if (!name || !url) return ui.warn(L('Uso: /provider add <nombre> <url> [ollama|openai|codice] [CLAVE o VARIABLE_CON_LA_CLAVE]', 'Usage: /provider add <name> <url> [ollama|openai|codice] [KEY or KEY_ENV_VARIABLE]'));
+        // si se omitió el tipo, el tercer dato es la clave
+        if (!['ollama', 'openai', 'codice'].includes(type)) { key = type; type = 'openai'; }
+        // la clave puede ir directa o como nombre de variable de entorno (MAYÚSCULAS_CON_GUIONES)
+        const isEnvName = Boolean(key) && /^[A-Z_][A-Z0-9_]*$/.test(key);
+        const entry = { type, baseUrl: url.replace(/\/+$/, ''), ...(key ? (isEnvName ? { apiKeyEnv: key } : { apiKey: key }) : {}) };
+        runtime.save(`providers.${name}`, entry);
+        // se prueba la conexión al momento, para avisar ya si algo está mal
+        try {
+          const models = await runtime.createClient({ provider: name, model: 'x' }).listModels();
+          ui.success(L(`Proveedor ${name} añadido y conectado · ${models.length} modelo(s): ${models.slice(0, 3).map((m) => m.id).join(', ')}`, `Provider ${name} added and connected · ${models.length} model(s): ${models.slice(0, 3).map((m) => m.id).join(', ')}`));
+        } catch (e) {
+          ui.warn(L(`Proveedor ${name} guardado, pero no respondió: ${e.status === 401 || e.status === 403 ? 'la clave no es correcta' : e.message}`, `Provider ${name} saved, but it did not respond: ${e.status === 401 || e.status === 403 ? 'the key is wrong' : e.message}`));
+        }
+        if (isEnvName && !process.env[key]) ui.hint(L(`La variable ${key} no existe en esta terminal. Créala con: setx ${key} "tu-clave" y abre una terminal nueva.`, `The variable ${key} is not set in this terminal. Create it with: setx ${key} "your-key" and open a new terminal.`));
+        if (key && !isEnvName) ui.hint(L('La clave quedó guardada en ~/.codice/settings.json (solo en tu equipo).', 'The key was saved in ~/.codice/settings.json (only on your machine).'));
+        return ui.hint(L(`Actívalo con /provider ${name}`, `Activate it with /provider ${name}`));
       }
       if (sub === 'remove') {
         runtime.save(`providers.${rest[0]}`, undefined);
