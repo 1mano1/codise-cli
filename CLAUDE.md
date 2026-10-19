@@ -554,3 +554,14 @@ Dos bloqueos genéricos que el usuario documentó al ver al agente atascarse en 
 - Un comando largo (install, build, test) no mostraba nada hasta terminar y parecía trabado. Ahora `runShell`
   acepta `onProgress`; el Bash tool la conecta al spinner (`rt.spinner.setVerb('Bash · <última línea>')`), así se
   ve la última línea de salida y el tiempo corriendo mientras trabaja. No cambia el resultado final.
+
+## Aviso de admin aunque "| head" lo disfrace (rama `fix/admin-detect-piped`)
+
+- El aviso de Administrador no salía con `choco install … | head`, porque el `| head` deja el código de salida en 0
+  y Códice creía que había funcionado. Ahora `adminCommand(comando)` reconoce comandos que suelen necesitar admin
+  (choco/winget install·upgrade·uninstall, msiexec /i·/x, reg add/delete HKLM, net user, sc, dism, bcdedit,
+  Enable-WindowsOptionalFeature…) y, si no terminaron bien (código ≠ 0, "was NOT successful", acceso denegado…),
+  se muestra el aviso aunque el código sea 0. `cleanCommand` quita la tubería final (| head/tail/…) para que el
+  usuario pegue el comando real.
+- Recordatorio para el usuario: `codice` está enlazado a la carpeta del repo (siempre lo último en `dev`), pero un
+  Códice ABIERTO sigue con el código viejo en memoria hasta cerrarlo del todo y reabrirlo.

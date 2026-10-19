@@ -515,6 +515,22 @@ export async function unitTests(t) {
     assert(/Do not retry/.test(r.content), 'le dice al modelo que no reintente');
   });
 
+  await t('Bash: un install de admin que falla disfrazado por "| head" igual avisa de Administrador', async (assert) => {
+    const { adminCommand, cleanCommand, Bash } = await import('../src/tools/bash.js');
+    assert(adminCommand('choco install 7zip -y') && adminCommand('winget install Git.Git') && adminCommand('msiexec /i a.msi'), 'reconoce comandos de admin');
+    assert(!adminCommand('npm install express') && !adminCommand('git commit -m x'), 'no marca comandos normales');
+    assert(cleanCommand('choco install x -y 2>&1 | head -30') === 'choco install x -y 2>&1', 'quita la tubería a head');
+    if (process.platform !== 'win32') return; // la detección en run() es solo Windows
+    // nota: no se invocan choco/winget/msiexec reales (lentos / abren instaladores); se usa echo con el patrón
+    const mk = (command) => { const shown = []; return Bash.run({ command, timeout: 10000 }, { cwd: ROOT, runtime: { settings: {}, projectRoot: ROOT }, ui: { markdown: (t) => shown.push(t) } }).then((r) => ({ r, shown })); };
+    // control: un comando normal que menciona "NOT successful" no debe avisar de admin
+    let { shown } = await mk('echo "The install of x was NOT successful" | head -5');
+    assert(shown.length === 0, 'un comando normal no dispara el aviso');
+    // comando de admin (winget install) que "falla" con código 0 por el | head → igual avisa, con el comando limpio
+    ({ shown } = await mk('echo "running winget install Foo.Bar"; echo "was NOT successful" | head -5'));
+    assert(shown.some((s) => /Administrador|Administrator/.test(s) && s.includes('winget install Foo.Bar')), `avisa de admin con el comando: ${shown.join(' | ')}`);
+  });
+
   await t('Bash: informa la salida en vivo mientras corre (para que un comando largo no parezca trabado)', async (assert) => {
     const { runShell } = await import('../src/tools/bash.js');
     const seen = [];

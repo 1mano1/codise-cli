@@ -155,6 +155,16 @@ export function needsElevation(output) {
   return /admin(?:istrator|istrative)? (?:rights|privileges|access|permissions)|requires? (?:elevation|administrator)|run as administrator|must be run (?:as|with|from an) (?:administrator|elevated)|elevated (?:privileges|permissions|command prompt|powershell)|Access (?:is|to the path).*denied|Access denied|Acceso denegado|permisos? de administrador|se requiere.*administrador|ejec[úu]te?lo como administrador|UnauthorizedAccessException|error 740|The requested operation requires elevation/i.test(String(output || ''));
 }
 
+// Comandos de Windows que casi siempre necesitan Administrador (instalar, tocar HKLM, servicios, features…).
+export function adminCommand(command) {
+  return /\b(choco(?:latey)?)\s+(install|upgrade|uninstall)\b|\bmsiexec\b.*\/(i|x|package)|\bwinget\s+(install|uninstall|upgrade)\b|\breg\s+(add|delete)\s+"?HK(LM|EY_LOCAL_MACHINE)|\bnet\s+(user|localgroup)\b|\bsc(\.exe)?\s+(create|config|delete)\b|\b(dism|bcdedit)\b|Enable-WindowsOptionalFeature|Set-ExecutionPolicy\s+.*LocalMachine|New-Service\b/i.test(String(command || ''));
+}
+
+// El comando sin la tubería final a head/tail/Select-Object (para que el usuario pegue el comando real).
+export function cleanCommand(command) {
+  return String(command).replace(/\s*\|\s*(head|tail|Select-Object|more|findstr|grep|out-file|tee)\b.*$/i, '').trim();
+}
+
 // Convierte un comando de la herramienta Bash a algo que el usuario pueda pegar en PowerShell como Administrador.
 // (El agente corre en Git Bash; el usuario abre "PowerShell (Administrador)".)
 export function elevatedHint(command) {
@@ -266,11 +276,18 @@ export const Bash = {
     let out = truncateMiddle(r.output.replace(/\r\n/g, '\n').trimEnd(), 30000) + note;
     if (r.killed === 'timeout') out += `\n[command stopped: exceeded the ${Math.round(timeout / 1000)} s timeout. If it just needs more time, run it again with a larger timeout.]`;
     // falta de permisos de administrador (Windows): se le muestra al usuario el comando listo para pegar en una
-    // PowerShell elevada, igual que el "!" para que lo corra él; el agente no debe reintentarlo en bucle
-    const elevation = r.code !== 0 && process.platform === 'win32' && needsElevation(out);
+    // PowerShell elevada, igual que el "!" para que lo corra él; el agente no debe reintentarlo en bucle.
+    // También cuando un comando que suele necesitar admin (choco/winget/msiexec…) no terminó bien —aunque un
+    // "| head" haya disfrazado el código de salida como 0.
+    const chocoFailed = /was NOT successful|no fue satisfactori|not install|Access is denied|falló la instalaci|exited -?[1-9]/i.test(out);
+    const elevation = process.platform === 'win32' && (
+      (r.code !== 0 && needsElevation(out))
+      || (adminCommand(command) && (r.code !== 0 || needsElevation(out) || chocoFailed))
+    );
     if (elevation) {
-      ctx.ui?.markdown?.(`${L('⚡ Administrador necesario', '⚡ Administrator needed')}\n${elevatedHint(command)}`);
-      out += '\n[this command needs Administrator rights on Windows and cannot run from this shell. I have shown the user the exact command to run in an elevated PowerShell. Do not retry it; continue with the rest of the task.]';
+      const cmd = cleanCommand(command);
+      ctx.ui?.markdown?.(`${L('⚡ Administrador necesario', '⚡ Administrator needed')}\n${elevatedHint(cmd)}`);
+      out += `\n[this command needs Administrator rights on Windows and cannot run from this normal shell. I have shown the user the exact command to run in an elevated PowerShell (${cmd}). Do not retry it here; wait for the user or continue with the rest of the task.]`;
     }
     // un programa que no está instalado: no sirve probar mil rodeos, hay que avisarle al usuario qué instalar
     const missing = r.code !== 0 && !elevation && missingProgram(out);
