@@ -244,6 +244,7 @@ export async function e2eTests(t) {
       const r = await runCli(['--yolo', ...base, '-p', 'haz la tarea'], { cwd: proj, home });
       assert(/varios comandos seguidos fallaron|many commands in a row failed/i.test(r.stdout + r.stderr), `se detuvo y avisó: ${r.stdout.slice(-300)}`);
       assert(m.requests.length - before <= 7, `no agotó todos los intentos (${m.requests.length - before} peticiones)`);
+      m.drain(); // quita los pasos que no se consumieron para no contaminar otras pruebas
     });
 
     await t('compactación: /compact, respaldo sin modelo y automática al llenarse', async (assert) => {
