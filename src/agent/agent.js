@@ -4,13 +4,34 @@ import { toPromptMessages, parseTextToolCalls } from '../llm/textTools.js';
 import { toolSpec, validateArgs, parseToolArgs } from '../tools/index.js';
 import { buildSystemPrompt } from './prompt.js';
 import { estimateContext, summarize, keepFromIndex } from './compact.js';
-import { truncateMiddle, randomId } from '../util/fs.js';
+import { truncateMiddle, randomId, formatTokens } from '../util/fs.js';
 import { wildcardMatch } from '../util/glob.js';
 import * as ui from '../ui/output.js';
 import { L } from '../i18n.js';
 import { liveActive } from '../ui/live.js';
 
 const MAX_DEPTH = 2;
+
+// Estado que no debe perderse al compactar: lista de tareas y archivos con los que se trabaja.
+function sessionState(runtime) {
+  const parts = [];
+  if (runtime.todos?.length) parts.push(`Task list:\n${runtime.todos.map((t) => `- [${t.status}] ${t.content}`).join('\n')}`);
+  const files = [...(runtime.readFiles || [])].slice(-20);
+  if (files.length) parts.push(`Files read or edited in this session (read them again before editing):\n${files.map((f) => `- ${f}`).join('\n')}`);
+  return parts.length ? `\n\n${parts.join('\n\n')}` : '';
+}
+
+// Resumen sin modelo: los pedidos del usuario y los últimos pasos, por si el modelo no logra resumir.
+function fallbackSummary(messages) {
+  const asks = messages.filter((m) => m.role === 'user' && typeof m.content === 'string' && !m.content.startsWith('[Summary')).map((m) => `- ${m.content.slice(0, 300)}`);
+  const prev = messages.find((m) => typeof m.content === 'string' && m.content.startsWith('[Summary'));
+  const last = messages.filter((m) => m.role === 'assistant' && m.content).slice(-2).map((m) => String(m.content).slice(0, 800));
+  return [
+    prev ? prev.content.replace('[Summary of the previous conversation]\n', '').slice(0, 3000) : '',
+    asks.length ? `User requests so far:\n${asks.slice(-10).join('\n')}` : '',
+    last.length ? `Latest assistant messages:\n${last.join('\n---\n')}` : '',
+  ].filter(Boolean).join('\n\n');
+}
 const SLOW_TOOLS = new Set(['Bash', 'Task', 'WebFetch', 'WebSearch']);
 
 export function abortError() {
@@ -58,6 +79,11 @@ export function mainView(runtime) {
     },
     toolEnd(name, summary, r) { spinner.stop(); ui.toolEnd(name, summary, r); },
     notice(t) { spinner.stop(); ui.warn(t); },
+    compacting(auto) { spinner.start(auto ? L('Contexto casi lleno: compactando la conversación…', 'Context almost full: compacting conversation…') : L('Compactando la conversación…', 'Compacting conversation…')); },
+    compacted(before, after) {
+      spinner.stop();
+      ui.success(`${L('Conversación compactada', 'Conversation compacted')} · ${formatTokens(before)} → ${formatTokens(after)} tokens`);
+    },
     pause() { spinner.stop(); },
   };
 }
@@ -72,6 +98,8 @@ export function subView(runtime, label) {
     toolStart(name, summary) { ui.subStep(label, name, summary); },
     toolEnd(name, summary, r) { if (!r.ok) ui.println(`      ${ui.isScreenReader() ? 'Error: ' : ''}${r.text ? String(r.text).split('\n')[0].slice(0, 160) : ''}`); },
     notice(t) { ui.hint(`    ${label}: ${t}`); },
+    compacting() {},
+    compacted(before, after) { ui.hint(`    ${label}: ${L('contexto compactado', 'context compacted')} ${formatTokens(before)} → ${formatTokens(after)}`); },
     pause() { runtime.spinner.stop(); },
   };
 }
@@ -387,35 +415,43 @@ export class Agent {
     if (!ratio || this.messages.length < 4) return;
     const { used, max } = this.contextUsage(tools);
     if (used < max * ratio) return;
-    this.view.notice(L(`Contexto al ${Math.round((used / max) * 100)} %: compactando la conversación…`, `Context at ${Math.round((used / max) * 100)}%: compacting the conversation…`));
-    await this.compact({ signal });
+    await this.compact({ signal, auto: true });
   }
 
-  async compact({ instructions = '', signal } = {}) {
+  // Resume la conversación y la sustituye por el resumen, el estado actual (tareas, archivos) y lo más reciente.
+  async compact({ instructions = '', signal, auto = false } = {}) {
     if (this.messages.length < 2) return null;
+    const window = this.runtime.contextWindow();
     let cut = keepFromIndex(this.messages);
     // si lo último es muy grande (una sola tarea larga), se resume todo
     const tail = this.messages.slice(cut);
-    if (cut === 0 || estimateContext('', tail) > this.runtime.contextWindow() * 0.5) cut = this.messages.length;
+    if (cut === 0 || estimateContext('', tail) > window * 0.5) cut = this.messages.length;
     const head = this.messages.slice(0, cut);
     if (!head.length) return null;
-    this.view.thinking();
+    const before = estimateContext('', this.messages);
+    this.view.compacting?.(auto);
     let summary;
     try {
-      summary = await summarize(this.client(), head, { instructions, signal });
-    } finally {
-      this.view.endTurn();
+      summary = await summarize(this.client(), head, { instructions, signal, budget: Math.floor(window * 0.6) });
+    } catch (e) {
+      if (e.name === 'AbortError' || signal?.aborted) { this.view.pause(); throw e; }
+      // el modelo no pudo resumir: se conserva lo esencial sin él para poder seguir
+      summary = fallbackSummary(head);
     }
+    if (!summary?.trim()) summary = fallbackSummary(head);
     const kept = this.messages.slice(cut);
     this.messages.length = 0;
     this.messages.push(
-      { role: 'user', content: `[Summary of the previous conversation]\n${summary}` },
+      { role: 'user', content: `[Summary of the previous conversation]\n${summary}${sessionState(this.runtime)}` },
       { role: 'assistant', content: 'Understood. I have the context and will continue from there.' },
       ...kept,
     );
-    if (cut === head.length && !kept.length && head.at(-1)?.role !== 'assistant') {
+    if (!kept.length && head.at(-1)?.role !== 'assistant') {
       this.messages.push({ role: 'user', content: 'Continue with the pending task.' });
     }
+    const after = estimateContext('', this.messages);
+    this.lastCompaction = { before, after, at: Date.now(), auto };
+    this.view.compacted?.(before, after);
     return summary;
   }
 }

@@ -342,3 +342,15 @@ Problemas reportados al probarla y solución:
   facturación cuando el proveedor no da el saldo por API (Anthropic, OpenAI, Gemini, Groq). `/cost` sigue igual.
 - `codice serve` lee la cola de cada respuesta de chat para contar tokens (total, por día y por IP) y los guarda
   en `~/.codice/serve-usage.json`; `GET /codice/usage` (con token) los expone.
+
+## Compactación de la conversación (rama `feat/compaction`)
+
+- Automática al llegar a `autoCompact` (85 % por defecto, se cambia en `/config`) o manual con `/compact [instrucciones]`;
+  también si el modelo rechaza la petición por desbordar el contexto.
+- Indicador "Compactando la conversación…" y al terminar "Conversación compactada · antes → después tokens".
+- Resumen por secciones como Claude Code (pedido, conceptos, archivos, errores, pendientes, trabajo actual,
+  siguiente paso con el último pedido literal). La transcripción se recorta al 60 % de la ventana (conserva el
+  primer mensaje y lo reciente) para que modelos pequeños puedan resumir.
+- Tras el resumen se agregan la lista de tareas y los archivos leídos/editados, para no perder el estado.
+- Si el modelo falla al resumir, se compacta sin él (pedidos del usuario y últimos mensajes).
+- La barra de estado muestra "N % para autocompactar" cuando faltan 15 puntos o menos.

@@ -108,6 +108,34 @@ export async function e2eTests(t) {
       assert(r.stdout.includes('Esta sesión') && r.stdout.includes('Hoy'), '/usage');
     });
 
+    await t('compactación: /compact, respaldo sin modelo y automática al llenarse', async (assert) => {
+      // manual: el resumen sustituye la conversación y conserva las tareas y archivos
+      m.push({ content: 'Primera respuesta.' }, { content: '1. Primary request: probar la compactación.' }, { content: 'Sigo.' });
+      let before = m.requests.length;
+      let r = await runCli([...base], { ...opts, input: 'quiero probar la compactación\n/compact\nsigue\n/exit\n' });
+      assert(/Conversación compactada · .+ → .+ tokens/.test(r.stdout), `aviso de compactación: ${r.stdout}`);
+      const sumReq = m.requests[before + 1];
+      assert(sumReq?.body.messages[1].content.includes('Pending tasks'), 'pide el resumen por secciones');
+      let msgs = m.requests.at(-1).body.messages;
+      assert(msgs.some((x) => String(x.content).includes('[Summary of the previous conversation]\n1. Primary request')), 'el resumen entra al contexto');
+      assert(!msgs.some((x) => x.content === 'Primera respuesta.'), 'la conversación anterior se sustituyó');
+      // respaldo: si el modelo falla al resumir, se compacta igual con los pedidos del usuario
+      m.push({ content: 'Ok.' }, { error: { status: 400, body: 'bad request' } }, { content: 'Continúo.' });
+      r = await runCli([...base], { ...opts, input: 'pedido importante\n/compact\nsigue\n/exit\n' });
+      msgs = m.requests.at(-1).body.messages;
+      assert(msgs.some((x) => String(x.content).includes('User requests so far') && String(x.content).includes('pedido importante')), `resumen de respaldo: ${r.stdout}${r.stderr}`);
+      // automática: con una ventana pequeña se compacta sola antes de pedir
+      const smallHome = path.join(work, '.home-small');
+      fs.mkdirSync(smallHome, { recursive: true });
+      fs.writeFileSync(path.join(smallHome, 'settings.json'), JSON.stringify({ onboarded: true, contextWindow: 2000, autoCompact: 0.5 }));
+      m.push({ content: 'Uno.' }, { content: 'Dos.' }, { content: 'Resumen automático.' }, { content: 'Tres.' });
+      before = m.requests.length;
+      r = await runCli([...base], { cwd, home: smallHome, input: 'uno\ndos\ntres\n/exit\n' });
+      assert(r.stdout.includes('Tres.') && /Conversación compactada/.test(r.stdout), `autocompactación: ${r.stdout}${r.stderr}`);
+      assert(m.requests.at(-1).body.messages.some((x) => String(x.content).includes('Resumen automático.')), 'el resumen automático entra al contexto');
+      assert(m.requests.length - before === 4, `peticiones: ${m.requests.length - before}`);
+    });
+
     await t('PC remota: codice serve + codice connect + tarea a través del proxy', async (assert) => {
       const port = 20000 + Math.floor(Math.random() * 20000);
       const pcHome = path.join(work, '.home-pc');
