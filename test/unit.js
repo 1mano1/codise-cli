@@ -561,6 +561,33 @@ export async function unitTests(t) {
     assert(ms >= 900 && ms < 3000 && /exceeded the 1 s timeout/.test(slow.content), `timeout 1 corta a ~1 s: ${ms} ms`);
   });
 
+  await t('permisos: "no preguntar más en esta sesión" pasa a bypass y deja de preguntar', async (assert) => {
+    const { Permissions } = await import('../src/permissions.js');
+    let mode = 'default';
+    const rt = { settings: { permissions: {} }, projectRoot: tmp(), localSettings: {}, get permissionMode() { return mode; }, setPermissionMode: (m) => { mode = m; }, offline: false };
+    const bash = { name: 'Bash', permissionKey: (a) => a.command };
+    const ui = { interactive: true, permission: async () => ({ choice: 'session' }) };
+    const perms = new Permissions(rt);
+    const r1 = await perms.check(bash, { command: 'echo a' }, { ui });
+    assert(r1.allowed && mode === 'bypass', 'tras elegir "sesión" queda en bypass');
+    // ahora ya no pregunta (el ui.permission lanzaría si lo llamara)
+    const ui2 = { interactive: true, permission: async () => { throw new Error('no debería preguntar'); } };
+    const r2 = await perms.check(bash, { command: 'rm x' }, { ui: ui2 });
+    assert(r2.allowed, 'ya no pregunta en esta sesión');
+  });
+
+  await t('compactación: el resumen pide un límite de longitud y tope de tokens (para que sí reduzca)', async (assert) => {
+    const { summarize } = await import('../src/agent/compact.js');
+    let sent = null;
+    const client = { chat: async (a) => { sent = a; return { content: 'resumen corto' }; } };
+    await summarize(client, [{ role: 'user', content: 'hola' }, { role: 'assistant', content: 'mucho texto '.repeat(500) }], { maxTokens: 1200 });
+    assert(/at most \d+ words/i.test(sent.messages[1].content), 'le pide un máximo de palabras');
+    assert(sent.maxTokens === 1200, 'pasa el tope de tokens al modelo');
+    // sin maxTokens no pone límite (compatibilidad)
+    await summarize(client, [{ role: 'user', content: 'x' }], {});
+    assert(!/at most/i.test(sent.messages[1].content) && sent.maxTokens === undefined, 'sin tope: como antes');
+  });
+
   await t('compactación: la transcripción respeta el presupuesto', async (assert) => {
     const { transcript, keepFromIndex } = await import('../src/agent/compact.js');
     const msgs = [{ role: 'user', content: 'objetivo inicial' }];

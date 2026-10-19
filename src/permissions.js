@@ -96,6 +96,12 @@ export class Permissions {
       try { saveSetting(this.runtime.projectRoot, 'local', 'permissions.allow', [...new Set([...(readLocalAllow(this.runtime)), rule])]); } catch { /* sin disco */ }
       return { allowed: true };
     }
+    // "no preguntar más en esta sesión": pasa a modo sin permisos solo en memoria (no se guarda; al reabrir vuelve
+    // a default). Útil para tareas largas con muchos comandos; el usuario aceptó el riesgo.
+    if (answer?.choice === 'session') {
+      this.runtime.setPermissionMode('bypass');
+      return { allowed: true };
+    }
     return { allowed: false, reason: answer?.feedback ? `The user rejected this action and said: ${answer.feedback}` : 'The user rejected this action. Ask what they would prefer.', userDenied: true };
   }
 }

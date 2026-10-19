@@ -37,13 +37,14 @@ export function createUI({ input = null, spinner = null } = {}) {
       options: [
         { label: L('Sí', 'Yes'), value: 'yes' },
         { label: L('Sí, y no volver a preguntar por', "Yes, and don't ask again for"), value: 'always', hint: rule, hintColor: 'status/info' },
+        { label: L('Sí, y no preguntar más en esta sesión', "Yes, and stop asking for this session"), value: 'session', hint: L('acepto el riesgo', 'I accept the risk'), hintColor: 'status/error' },
         { label: L('No, y decirle qué hacer diferente', 'No, and tell it what to do instead'), value: 'no', hint: '(esc)', hintColor: 'status/info' },
       ],
       footer: L('↑↓ elegir · enter confirmar · esc = no', '↑↓ move · enter select · esc = no'),
       erase: true,
       tone: 'status/warning',
     });
-    if (choice === 'yes' || choice === 'always') {
+    if (choice === 'yes' || choice === 'always' || choice === 'session') {
       setHeaderMark(mark);
       return { choice };
     }
