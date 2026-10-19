@@ -7,6 +7,37 @@ import { L } from '../i18n.js';
 
 const MAX_LINE = 2000;
 
+// Archivos con el mismo nombre en el proyecto y en ~/.codice, para que el modelo no tenga que adivinar ni preguntar.
+const SKIP = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'target', 'venv', '.venv', '__pycache__', 'sessions', 'checkpoints']);
+export function findSimilar(wanted, roots, { max = 5, maxEntries = 20000 } = {}) {
+  const base = path.basename(wanted).toLowerCase();
+  const parent = path.basename(path.dirname(wanted)).toLowerCase();
+  const found = [];
+  let seen = 0;
+  const walk = (dir, depth) => {
+    if (depth > 6 || seen > maxEntries) return;
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (++seen > maxEntries) return;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { if (!SKIP.has(e.name)) walk(full, depth + 1); }
+      else if (e.name.toLowerCase() === base) found.push(full);
+    }
+  };
+  for (const r of [...new Set(roots.filter(Boolean))]) walk(r, 0);
+  // primero los que están en una carpeta con el mismo nombre que la pedida
+  return found.sort((a, b) => (path.basename(path.dirname(b)).toLowerCase() === parent) - (path.basename(path.dirname(a)).toLowerCase() === parent)).slice(0, max);
+}
+
+function notFound(p, ctx, extra = '') {
+  const similar = findSimilar(p, [ctx.runtime?.projectRoot || ctx.cwd, ctx.runtime?.codiceHome]);
+  const hint = similar.length
+    ? L(` Archivos con ese nombre: ${similar.join(', ')}. Usa la ruta completa.`, ` Files with that name: ${similar.join(', ')}. Use the full path.`)
+    : L(' Búscalo con Glob antes de preguntar al usuario.', ' Search for it with Glob before asking the user.');
+  return new Error(`${L(`No existe el archivo: ${p}.`, `File not found: ${p}.`)}${extra}${hint}`);
+}
+
 export const Read = {
   name: 'Read',
   readOnly: true,
@@ -24,7 +55,7 @@ export const Read = {
   permissionKey: (a, ctx) => resolvePath(a.file_path, ctx.cwd),
   async run(a, ctx) {
     const p = resolvePath(a.file_path, ctx.cwd);
-    if (!fs.existsSync(p)) throw new Error(L(`No existe el archivo: ${p}`, `File not found: ${p}`));
+    if (!fs.existsSync(p)) throw notFound(p, ctx);
     const st = fs.statSync(p);
     if (st.isDirectory()) throw new Error(L(`${p} es una carpeta; usa LS o Glob`, `${p} is a directory; use LS or Glob`));
     const buf = fs.readFileSync(p);
@@ -122,7 +153,7 @@ export const Edit = {
   permissionKey: (a, ctx) => resolvePath(a.file_path, ctx.cwd),
   prepare(a, ctx) {
     const p = resolvePath(a.file_path, ctx.cwd);
-    if (!fs.existsSync(p)) throw new Error(L(`No existe el archivo: ${p}. Usa Write para crearlo.`, `File not found: ${p}. Use Write to create it.`));
+    if (!fs.existsSync(p)) throw notFound(p, ctx, L(' Si es nuevo, créalo con Write.', ' If it is new, create it with Write.'));
     const raw = fs.readFileSync(p, 'utf8');
     const crlf = raw.includes('\r\n');
     const content = raw.replace(/\r\n/g, '\n');

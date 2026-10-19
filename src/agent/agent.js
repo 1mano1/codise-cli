@@ -12,6 +12,14 @@ import { liveActive } from '../ui/live.js';
 
 const MAX_DEPTH = 2;
 
+// ¿El texto termina anunciando una acción que no hizo? (no cuenta si termina con una pregunta)
+export function announcesAction(text) {
+  const t = String(text || '').replace(/```[\s\S]*?```/g, ' ').trim();
+  if (!t || /\?\s*$/.test(t)) return false;
+  const tail = t.slice(-280).toLowerCase();
+  return /(voy a|vamos a|a continuación|ahora (voy|vamos)|procedo a|procederé|déjame|permíteme|lo haré|haré los cambios|let me|i will|i'll|i am going to|i'm going to|next,? i|now i|now,? let's|let's)\b[^?]*$/i.test(tail);
+}
+
 // Estado que no debe perderse al compactar: lista de tareas y archivos con los que se trabaja.
 function sessionState(runtime) {
   const parts = [];
@@ -44,10 +52,19 @@ export function mainView(runtime) {
   let md = null, rs = null, queue = '', pump = null;
   const verbs = () => runtime.spinnerVerbs();
   const pick = () => { const v = verbs(); return v[Math.floor(Math.random() * v.length)]; };
+  // el indicador cuenta tiempo y tokens de todo el turno y sigue visible mientras el modelo escribe:
+  // así siempre se sabe que está trabajando (y en qué)
+  let turn = { t0: Date.now(), tokens: 0 };
   return {
-    thinking() { spinner.start(pick()); },
+    beginTurn() { turn = { t0: Date.now(), tokens: 0 }; },
+    thinking() { spinner.start(pick(), { since: turn.t0, tokens: turn.tokens }); },
+    status(verb) { if (spinner.active) spinner.setVerb(verb); },
     text(t) {
-      if (!md) { spinner.stop(); md = new ui.MarkdownStream(); }
+      if (!md) {
+        md = new ui.MarkdownStream();
+        if (liveActive()) spinner.setVerb(L('Escribiendo…', 'Writing…'));
+        else spinner.stop();
+      }
       if (!liveActive()) { md.push(t); return; }
       // revela el texto a ritmo constante: los modelos mandan ráfagas y se vería a saltos
       queue += t;
@@ -62,7 +79,11 @@ export function mainView(runtime) {
     },
     reasoning(r) {
       if (!runtime.settings.showThinking) return;
-      if (!rs) { spinner.stop(); rs = ui.reasoningWriter(); }
+      if (!rs) {
+        if (liveActive()) spinner.setVerb(L('Pensando…', 'Thinking…'));
+        else spinner.stop();
+        rs = ui.reasoningWriter();
+      }
       rs.push(r);
     },
     endTurn() {
@@ -71,7 +92,7 @@ export function mainView(runtime) {
       queue = '';
       rs?.flush(); md?.flush(); md = null; rs = null; spinner.stop();
     },
-    tokens(n) { spinner.addTokens(n); },
+    tokens(n) { spinner.addTokens(n); turn.tokens += n; },
     toolStart(name, summary) {
       spinner.stop();
       ui.toolStart(name, summary);
@@ -188,6 +209,9 @@ export class Agent {
     this.mutations = 0;
     this.loopHits = 0;
     this.errorStreak = 0;
+    this.nudges = 0;
+    this.toolCount = 0;
+    this.view.beginTurn?.();
     while (turns < maxTurns) {
       turns++;
       if (signal?.aborted) throw abortError();
@@ -205,12 +229,20 @@ export class Agent {
         continue;
       }
       if (!res.toolCalls.length) {
+        // modelos pequeños: anuncian lo que harán ("voy a…", "a continuación…") y se detienen sin hacerlo
+        if (this.nudges < 2 && tools.length && this.runtime.permissionMode !== 'plan' && announcesAction(finalText)) {
+          this.nudges++;
+          this.view.status?.(L('Continuando con lo que anunció…', 'Continuing with what it announced…'));
+          this.messages.push({ role: 'user', content: 'You described what you are going to do but did not do it. Do it now by calling the tools (Read, Edit, Write, Bash…). Do not describe it again and do not ask; act.' });
+          continue;
+        }
         if (!this.isSub && stopRetries < 2) {
           const stop = await this.runtime.hook('Stop', { last_message: finalText });
           if (stop.blocked) { stopRetries++; this.messages.push({ role: 'user', content: stop.reason }); continue; }
         }
-        return { text: finalText, turns, tokens: this.usage.input + this.usage.output };
+        return { text: finalText, turns, tools: this.toolCount, tokens: this.usage.input + this.usage.output };
       }
+      this.toolCount += res.toolCalls.length;
       let results;
       try {
         results = await this.executeCalls(res.toolCalls, tools, signal);
@@ -258,8 +290,22 @@ export class Agent {
           messages,
           tools: mode === 'native' && specs.length ? specs : undefined,
           signal,
-          onText: (t) => { streamed += t; splitter.push(t); view.tokens(Math.max(1, Math.round(t.length / 4))); },
+          onText: (t) => {
+            streamed += t;
+            splitter.push(t);
+            view.tokens(Math.max(1, Math.round(t.length / 4)));
+            // modo prompt: la llamada a la herramienta se escribe oculta; se avisa para que no parezca trabado
+            const open = streamed.lastIndexOf('<tool_call>');
+            if (open >= 0 && streamed.indexOf('</tool_call>', open) < 0) {
+              const name = streamed.slice(open).match(/"name"\s*:\s*"([\w.-]+)"/)?.[1];
+              view.status?.(name ? L(`Preparando ${name}…`, `Preparing ${name}…`) : L('Preparando una herramienta…', 'Preparing a tool…'));
+            }
+          },
           onReasoning: (x) => { view.reasoning(x); view.tokens(Math.max(1, Math.round(x.length / 4))); },
+          onToolCall: (name, chunk) => {
+            view.status?.(name ? L(`Preparando ${name}…`, `Preparing ${name}…`) : L('Preparando una herramienta…', 'Preparing a tool…'));
+            if (chunk) view.tokens(Math.max(1, Math.round(chunk.length / 4)));
+          },
         });
         splitter.flush();
         view.endTurn();

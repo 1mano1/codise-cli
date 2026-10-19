@@ -109,6 +109,27 @@ export async function e2eTests(t) {
       assert(r.stdout.includes('Esta sesión') && r.stdout.includes('Hoy'), '/usage');
     });
 
+    await t('turno: si anuncia y no actúa lo empuja; error de archivo con sugerencias; cierre "Listo"', async (assert) => {
+      const proj = path.join(work, 'proyecto-turno');
+      fs.mkdirSync(path.join(proj, '.git'), { recursive: true });
+      fs.mkdirSync(path.join(proj, 'config', 'pez'), { recursive: true });
+      fs.writeFileSync(path.join(proj, 'config', 'pez', 'mascot.json'), '{"name":"Pez"}');
+      m.push(
+        { toolCalls: [{ name: 'Read', args: { file_path: 'pez/mascot.json' } }] },
+        { content: 'Voy a crear el archivo notas.txt con el texto pedido.' },
+        { toolCalls: [{ name: 'Write', args: { file_path: 'notas.txt', content: 'hola' } }] },
+        { content: 'Listo, creé notas.txt.' },
+      );
+      const before = m.requests.length;
+      const r = await runCli(['--yolo', ...base], { cwd: proj, home, input: 'crea notas.txt\n/exit\n' });
+      const msgs = m.requests.at(-1).body.messages;
+      const readErr = msgs.find((x) => x.role === 'tool' && String(x.content).includes('No existe el archivo'));
+      assert(readErr && String(readErr.content).includes(path.join('config', 'pez', 'mascot.json')), `sugiere el archivo correcto: ${readErr?.content}`);
+      assert(msgs.some((x) => x.role === 'user' && String(x.content).includes('did not do it')), 'empujón al anunciar sin actuar');
+      assert(fs.existsSync(path.join(proj, 'notas.txt')), `terminó haciendo lo anunciado (${m.requests.length - before} peticiones)`);
+      assert(/✻ Listo · .*2 herramientas/.test(r.stdout), `línea de cierre: ${r.stdout.slice(-400)}`);
+    });
+
     await t('compactación: /compact, respaldo sin modelo y automática al llenarse', async (assert) => {
       // manual: el resumen sustituye la conversación y conserva las tareas y archivos
       m.push({ content: 'Primera respuesta.' }, { content: '1. Primary request: probar la compactación.' }, { content: 'Sigo.' });

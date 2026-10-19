@@ -54,7 +54,7 @@ export class OpenAIClient {
     return (j.data || j.models || []).map((m) => ({ id: m.id || m.name, size: m.size || null }));
   }
 
-  async chat({ messages, tools, signal, onText, onReasoning, maxTokens }) {
+  async chat({ messages, tools, signal, onText, onReasoning, onToolCall, maxTokens }) {
     const body = { model: this.model, messages, stream: true, temperature: this.temperature, stream_options: { include_usage: true } };
     if (tools?.length) body.tools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
     const mt = maxTokens || this.maxTokens;
@@ -67,23 +67,23 @@ export class OpenAIClient {
       // algunos servidores no aceptan stream_options
       if (res.status === 400 && /stream_options/i.test(text)) {
         delete body.stream_options;
-        return this.chatWithBody(body, { signal, onText, onReasoning });
+        return this.chatWithBody(body, { signal, onText, onReasoning, onToolCall });
       }
       throw new LLMError(`HTTP ${res.status}: ${text.slice(0, 400)}`, { status: res.status, body: text, toolsUnsupported: Boolean(tools?.length) && looksLikeToolsUnsupported(res.status, text) });
     }
-    return this.readStream(res, { onText, onReasoning });
+    return this.readStream(res, { onText, onReasoning, onToolCall });
   }
 
-  async chatWithBody(body, { signal, onText, onReasoning }) {
+  async chatWithBody(body, { signal, onText, onReasoning, onToolCall }) {
     const res = await postJSON(`${this.baseUrl}/chat/completions`, { headers: this.headers(), body, signal, gzip: this.gzip }, this.label);
     if (!res.ok) {
       const text = await res.text();
       throw new LLMError(`HTTP ${res.status}: ${text.slice(0, 400)}`, { status: res.status, body: text, toolsUnsupported: Boolean(body.tools) && looksLikeToolsUnsupported(res.status, text) });
     }
-    return this.readStream(res, { onText, onReasoning });
+    return this.readStream(res, { onText, onReasoning, onToolCall });
   }
 
-  async readStream(res, { onText, onReasoning }) {
+  async readStream(res, { onText, onReasoning, onToolCall }) {
     let content = '', reasoning = '', usage = null, finish = null;
     const calls = [];
     const ct = res.headers.get('content-type') || '';
@@ -114,7 +114,9 @@ export class OpenAIClient {
           calls[i] ??= { id: '', name: '', arguments: '' };
           if (tc.id) calls[i].id = tc.id;
           if (tc.function?.name && !calls[i].name) calls[i].name = tc.function.name;
-          if (tc.function?.arguments) calls[i].arguments += typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments);
+          const chunk = tc.function?.arguments ? (typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments)) : '';
+          calls[i].arguments += chunk;
+          onToolCall?.(calls[i].name, chunk);
         }
         if (ch.finish_reason) finish = ch.finish_reason;
       }

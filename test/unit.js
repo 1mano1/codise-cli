@@ -336,6 +336,23 @@ export async function unitTests(t) {
     } finally { if (prev == null) delete process.env.CODICE_SANDBOX_ENGINE; else process.env.CODICE_SANDBOX_ENGINE = prev; }
   });
 
+  await t('agente: detecta cuando anuncia una acción y no la hace; sugiere archivos con el mismo nombre', async (assert) => {
+    const { announcesAction } = await import('../src/agent/agent.js');
+    assert(announcesAction('Voy a crear una nueva versión del archivo mascot.json con estos detalles.'), 'voy a…');
+    assert(announcesAction('Aquí está el contenido:\n```json\n{}\n```\nA continuación, vamos a reemplazar el archivo existente con este nuevo contenido.'), 'a continuación…');
+    assert(announcesAction("Let me update the config file."), 'let me…');
+    assert(!announcesAction('¿Podrías confirmar el nombre del archivo?'), 'una pregunta no cuenta');
+    assert(!announcesAction('Listo: creé memory.js y las pruebas pasan.'), 'un resumen final no cuenta');
+    const { findSimilar } = await import('../src/tools/files.js');
+    const root = tmp();
+    fs.mkdirSync(path.join(root, 'mascots', 'pez'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'mascots', 'pez', 'mascot.json'), '{}');
+    fs.mkdirSync(path.join(root, 'node_modules', 'x'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'node_modules', 'x', 'mascot.json'), '{}');
+    const found = findSimilar(path.join('C:', 'otro', 'pez', 'mascot.json'), [root]);
+    assert(found.length === 1 && found[0].endsWith(path.join('pez', 'mascot.json')), `encuentra el archivo (sin node_modules): ${found}`);
+  });
+
   await t('compactación: la transcripción respeta el presupuesto', async (assert) => {
     const { transcript, keepFromIndex } = await import('../src/agent/compact.js');
     const msgs = [{ role: 'user', content: 'objetivo inicial' }];
