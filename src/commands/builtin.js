@@ -28,6 +28,7 @@ function openInEditor(file) {
 
 export const BUILTIN_COMMANDS = {
   help: {
+    live: true,
     panel: true,
     get description() { return L('Muestra los comandos y atajos', 'Show commands and shortcuts'); },
     async run(args, { runtime, repl }) {
@@ -197,6 +198,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   tools: {
+    live: true,
     panel: true,
     get description() { return L('Lista las herramientas disponibles', 'List available tools'); },
     async run(a, { repl }) {
@@ -271,6 +273,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   skills: {
+    live: true,
     panel: true,
     get description() { return L('Lista las skills instaladas', 'List installed skills'); },
     async run(a, { runtime }) {
@@ -324,6 +327,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   commands: {
+    live: true,
     panel: true,
     get description() { return L('Lista los comandos personalizados', 'List custom commands'); },
     async run(a, { runtime }) {
@@ -334,6 +338,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   memory: {
+    live: true,
     get description() { return L('Memoria del proyecto (CODICE.md): ver, add, edit', 'Project memory (CODICE.md): view, add, edit'); },
     argumentHint: '[add <text> | edit | clear-activity]',
     async run(args, { runtime }) {
@@ -378,6 +383,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   context: {
+    live: true,
     panel: true,
     get description() { return L('Uso estimado del contexto', 'Estimated context usage'); },
     async run(a, { repl }) {
@@ -390,6 +396,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   cost: {
+    live: true,
     panel: true,
     get description() { return L('Tokens usados, velocidad y costo', 'Tokens used, speed and cost'); },
     aliases: ['stats'],
@@ -411,6 +418,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   usage: {
+    live: true,
     panel: true,
     get description() { return L('Consumo y saldo: sesión, hoy, mes y proveedor', 'Usage and balance: session, today, month and provider'); },
     argumentHint: '[today|month|all]',
@@ -486,6 +494,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   todos: {
+    live: true,
     panel: true,
     get description() { return L('Muestra la lista de tareas actual', 'Show the current task list'); },
     async run(a, { runtime }) {
@@ -542,6 +551,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   doctor: {
+    live: true,
     panel: true,
     get description() { return L('Diagnostica la instalación y la conexión', 'Diagnose installation and connection'); },
     async run(a, { runtime }) {
@@ -616,6 +626,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   status: {
+    live: true,
     panel: true,
     get description() { return L('Resumen de la sesión actual', 'Current session summary'); },
     async run(a, { runtime, repl }) {
@@ -644,7 +655,7 @@ export const BUILTIN_COMMANDS = {
     },
   },
 
-  version: { get description() { return L('Versión de Códice', 'Códice version'); }, async run() { ui.println(`codice ${VERSION}`); } },
+  version: { live: true, get description() { return L('Versión de Códice', 'Códice version'); }, async run() { ui.println(`codice ${VERSION}`); } },
 };
 
 // Asistente para crear un agente (el modelo puede generarlo a partir de una descripción).

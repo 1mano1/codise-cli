@@ -274,10 +274,11 @@ async function configPanel(ctx) {
 
 export function customizeCommands({ legacyConfig }) {
   return {
-    theme: { get description() { return L('Elige el tema de colores (con vista previa) o crea uno', 'Pick a color theme (with preview) or create one'); }, argumentHint: '[theme]', run: themeCommand },
-    mascot: { get description() { return L('Elige la mascota de cada tema o crea la tuya', 'Pick the mascot for each theme or create yours'); }, aliases: ['mascota'], argumentHint: '[import <png> <name>]', run: mascotCommand },
-    accessibility: { get description() { return L('Lector de pantalla, reducir movimiento, sin color, temas accesibles', 'Screen reader, reduced motion, no color, accessible themes'); }, aliases: ['accesibilidad', 'a11y'], run: accessibilityCommand },
+    theme: { live: true, get description() { return L('Elige el tema de colores (con vista previa) o crea uno', 'Pick a color theme (with preview) or create one'); }, argumentHint: '[theme]', run: themeCommand },
+    mascot: { live: true, get description() { return L('Elige la mascota de cada tema o crea la tuya', 'Pick the mascot for each theme or create yours'); }, aliases: ['mascota'], argumentHint: '[import <png> <name>]', run: mascotCommand },
+    accessibility: { live: true, get description() { return L('Lector de pantalla, reducir movimiento, sin color, temas accesibles', 'Screen reader, reduced motion, no color, accessible themes'); }, aliases: ['accesibilidad', 'a11y'], run: accessibilityCommand },
     config: {
+      live: true,
       get description() { return L('Panel de configuración (o get/set <clave> <valor>)', 'Settings panel (or get/set <key> <value>)'); },
       argumentHint: '[get <key> | set <key> <value>]',
       async run(args, ctx) {

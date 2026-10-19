@@ -188,14 +188,30 @@ class Repl {
     return this.runPrompt(text);
   }
 
-  async command(text) {
+  // ¿El comando no toca al modelo ni la conversación? (se puede correr aunque el agente esté trabajando)
+  resolveBuiltin(name) {
+    return BUILTIN_COMMANDS[name] || Object.values(BUILTIN_COMMANDS).find((cmd) => cmd.aliases?.includes(name));
+  }
+
+  isLiveCommand(name) {
+    return Boolean(this.resolveBuiltin(name)?.live);
+  }
+
+  // Comando lanzado mientras el agente trabaja: se ejecuta sin cambiar el estado "ocupado" y de uno en uno.
+  async runLiveCommand(text) {
+    if (this.liveBusy) return;
+    this.liveBusy = true;
+    try { await this.command(text, { live: true }); } catch (e) { this.showError(e); } finally { this.liveBusy = false; }
+  }
+
+  async command(text, { live = false } = {}) {
     const [rawName, ...rest] = text.slice(1).split(/\s+/);
     const args = text.slice(1 + rawName.length).trim();
     const name = rawName.toLowerCase();
     const ctx = { runtime: this.runtime, repl: this };
-    const builtin = BUILTIN_COMMANDS[name] || Object.values(BUILTIN_COMMANDS).find((cmd) => cmd.aliases?.includes(name));
+    const builtin = this.resolveBuiltin(name);
     if (builtin) {
-      this.input.setBusy(true);
+      if (!live) this.input.setBusy(true);
       const printed = ui.outputCount();
       const saved = this.runtime.saveCount || 0;
       let panel = false;
@@ -206,7 +222,7 @@ class Repl {
           await showPanel(this.input, { title: `/${name}`, text });
           panel = true;
         } else await builtin.run(args, ctx);
-      } finally { this.input.setBusy(false); }
+      } finally { if (!live) this.input.setBusy(false); }
       // si el comando no dejó nada en la conversación, se dice qué pasó (para que no parezca que no hizo nada)
       if (ui.outputCount() === printed && !['clear', 'exit'].includes(name)) {
         const what = (this.runtime.saveCount || 0) > saved ? L('guardado', 'saved') : panel ? L('cerrado', 'closed') : L('cerrado sin cambios', 'closed without changes');
@@ -372,6 +388,8 @@ export async function startRepl(runtime, { session, initialPrompt = null } = {})
     onInterrupt: () => repl?.abort(),
     onExpand: () => repl?.expand(),
     onExit: () => repl?.ctrlC(),
+    isLiveCommand: (name) => repl?.isLiveCommand(name),
+    onLiveCommand: (text) => repl?.runLiveCommand(text),
   });
   input.start();
   runtime.ui = createUI({ input, spinner: runtime.spinner });
