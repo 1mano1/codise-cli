@@ -102,7 +102,11 @@ Muestra las direcciones de red y el comando exacto para la laptop:
 codice connect http://192.168.1.50:8787 --token <token> --name pc-casa
 ```
 
-Las herramientas (archivos, Bash) se ejecutan en la laptop; solo la inferencia viaja a la PC. Para usarlo fuera de casa usa **Tailscale**, ZeroTier o una VPN; no abras el puerto a internet. Para HTTPS: `codice serve --cert cert.pem --key key.pem`.
+Las herramientas (archivos, Bash) se ejecutan en la laptop; solo la inferencia viaja a la PC. Para HTTPS: `codice serve --cert cert.pem --key key.pem`.
+
+Si usas un servidor compatible con OpenAI directo (p. ej. `llama-server --host 0.0.0.0 --api-key …`), no necesitas `codice serve`: agrégalo con `/provider add pc http://IP:PUERTO/v1 openai TU_CLAVE`.
+
+**Fuera de casa (otra red):** una dirección `192.168.x`, `10.x` o `172.16–31.x` solo funciona en la misma red. Para usar tu PC desde la calle, instala [Tailscale](https://tailscale.com) (gratis) en las dos computadoras y usa la dirección `100.x` que te da Tailscale como IP de la PC. Es una red privada cifrada entre tus equipos; **no abras puertos al internet** (expondrías tu servidor a cualquiera). Códice te avisa cuando una dirección es solo de red local.
 
 ## Comandos
 

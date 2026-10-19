@@ -26,6 +26,14 @@ function openInEditor(file) {
   spawn(editor, [file], { stdio: 'inherit', shell: process.platform === 'win32', detached: process.platform === 'win32' });
 }
 
+// ¿La URL apunta a una dirección de red local (solo misma red)? No cuenta 100.x (Tailscale, sí alcanzable fuera).
+export function isLanUrl(u) {
+  let host;
+  try { host = new URL(u).hostname; } catch { return false; }
+  if (/^(localhost|127\.|::1|0\.0\.0\.0)$/.test(host)) return false;
+  return /^192\.168\.\d+\.\d+$/.test(host) || /^10\.\d+\.\d+\.\d+$/.test(host) || /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(host) || /\.local$/i.test(host);
+}
+
 export const BUILTIN_COMMANDS = {
   help: {
     live: true,
@@ -131,6 +139,8 @@ export const BUILTIN_COMMANDS = {
         }
         if (isEnvName && !process.env[key]) ui.hint(L(`La variable ${key} no existe en esta terminal. Créala con: setx ${key} "tu-clave" y abre una terminal nueva.`, `The variable ${key} is not set in this terminal. Create it with: setx ${key} "your-key" and open a new terminal.`));
         if (key && !isEnvName) ui.hint(L('La clave quedó guardada en ~/.codice/settings.json (solo en tu equipo).', 'The key was saved in ~/.codice/settings.json (only on your machine).'));
+        // dirección de red local: solo funciona en la misma red. Para usarla fuera de casa, red privada (Tailscale).
+        if (isLanUrl(url)) ui.hint(L('Es una dirección de red local: solo funciona si ambos equipos están en la misma red. Para usarla fuera de casa, instala Tailscale (gratis) en las dos PCs y usa aquí la dirección 100.x que te dé — no abras puertos al internet.', 'This is a local-network address: it only works when both machines are on the same network. To use it away from home, install Tailscale (free) on both PCs and use its 100.x address here — do not expose ports to the internet.'));
         return ui.hint(L(`Actívalo con /provider ${name}`, `Activate it with /provider ${name}`));
       }
       if (sub === 'remove') {
