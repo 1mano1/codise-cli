@@ -183,7 +183,9 @@ export async function e2eTests(t) {
     await t('gzip: comprime las peticiones grandes y vuelve a texto plano si el servidor no lo acepta', async (assert) => {
       const { OpenAIClient } = await import('../src/llm/openai.js');
       const { wantsGzip, gzipRejected } = await import('../src/llm/compress.js');
-      assert(wantsGzip({}, { cloud: true, baseUrl: 'https://api.anthropic.com/v1' }), 'nube: sí');
+      assert(wantsGzip({}, { cloud: true, baseUrl: 'https://api.anthropic.com/v1' }), 'Anthropic: sí');
+      assert(!wantsGzip({}, { cloud: true, baseUrl: 'https://api.openai.com/v1' }), 'otras nubes: solo si se activa');
+      assert(wantsGzip({ compressRequests: true }, { cloud: true, baseUrl: 'https://api.openai.com/v1' }), 'se puede activar');
       assert(wantsGzip({}, { type: 'codice', baseUrl: 'http://192.168.1.5:8787' }), 'PC remota: sí');
       assert(!wantsGzip({}, { type: 'ollama', baseUrl: 'http://localhost:11434' }), 'servidor en esta PC: no');
       assert(!wantsGzip({ compressRequests: false }, { cloud: true, baseUrl: 'https://x.ai' }), 'se puede apagar');

@@ -7,14 +7,14 @@ import { safeFetch } from './openai.js';
 const MIN_BYTES = 1024; // por debajo no vale la pena
 const rejected = new Set(); // servidores que no aceptan cuerpos comprimidos (se recuerda en esta ejecución)
 
-// auto: en la nube y en la PC remota sí; en servidores de esta misma PC no (no hay red de por medio).
+// auto: solo donde se sabe que se acepta: la API de Anthropic (igual que Claude Code) y la PC remota con
+// `codice serve`. Para otros proveedores se activa con compressRequests: true (si lo rechazan, se reenvía plano).
 export function wantsGzip(settings, provider) {
   if (process.env.CODICE_GZIP === '0') return false;
   const mode = settings?.compressRequests ?? 'auto';
-  if (mode === true || mode === false) return mode;
   if (!provider?.baseUrl || provider.type === 'local') return false;
-  if (provider.cloud || provider.type === 'codice') return true;
-  return !/^https?:\/\/(localhost|127\.|\[::1\]|0\.0\.0\.0)/i.test(provider.baseUrl);
+  if (mode === true || mode === false) return mode;
+  return provider.type === 'codice' || /^https:\/\/api\.anthropic\.com/i.test(provider.baseUrl);
 }
 
 export function originOf(url) {
