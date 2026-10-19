@@ -15,6 +15,7 @@ import { OpenAIClient } from './llm/openai.js';
 import { RemoteClient, createSingleClient } from './llm/index.js';
 import { parseTextToolCalls } from './llm/textTools.js';
 import { L } from './i18n.js';
+import { usageFromTail } from './usage.js';
 
 const SERVE_FILE = () => path.join(HOME, 'serve.json');
 
@@ -63,6 +64,31 @@ function safeEqual(a, b) {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
+// Consumo servido por esta PC: total, de hoy y por cliente (IP). Se guarda en ~/.codice/serve-usage.json.
+function createServeUsage() {
+  const file = path.join(HOME, 'serve-usage.json');
+  const data = readJSON(file, { since: Date.now(), total: { requests: 0, input: 0, output: 0 }, days: {}, clients: {} });
+  const bump = (o, u) => { o.requests = (o.requests || 0) + 1; o.input = (o.input || 0) + u.input; o.output = (o.output || 0) + u.output; };
+  return {
+    add(ip, u) {
+      const day = new Date().toISOString().slice(0, 10);
+      bump(data.total, u);
+      bump((data.days[day] ||= {}), u);
+      bump((data.clients[ip] ||= {}), u);
+      const days = Object.keys(data.days).sort();
+      for (const old of days.slice(0, Math.max(0, days.length - 90))) delete data.days[old];
+      try { writeJSON(file, data); } catch { /* sin disco */ }
+    },
+    snapshot() {
+      const day = new Date().toISOString().slice(0, 10);
+      const month = day.slice(0, 7);
+      const monthTotal = { requests: 0, input: 0, output: 0 };
+      for (const [d, v] of Object.entries(data.days)) if (d.startsWith(month)) for (const k of Object.keys(monthTotal)) monthTotal[k] += v[k] || 0;
+      return { host: os.hostname(), since: data.since, total: data.total, today: data.days[day] || { requests: 0, input: 0, output: 0 }, month: monthTotal, clients: data.clients };
+    },
+  };
+}
+
 // ── Servidor ─────────────────────────────────────────────────────
 export async function serve(o) {
   const saved = readJSON(SERVE_FILE(), {});
@@ -80,6 +106,7 @@ export async function serve(o) {
   const target = new URL(backend.url);
   const backendOrigin = target.origin;
   const failures = new Map();
+  const serveUsage = createServeUsage();
 
   const handler = (req, res) => {
     const t0 = Date.now();
@@ -97,6 +124,11 @@ export async function serve(o) {
       res.end('{"error":"invalid token"}');
       return log(401);
     }
+    if (req.url === '/codice/usage') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(serveUsage.snapshot()));
+      return log(200);
+    }
     if (req.url === '/codice/info') {
       detectBackend({ backend: backend.kind, backendUrl: backend.url }).then((b) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -112,10 +144,17 @@ export async function serve(o) {
     const headers = { ...req.headers };
     delete headers.authorization;
     delete headers.host;
+    const isChat = /\/(api\/chat|api\/generate|v1\/chat\/completions|v1\/completions)$/.test(upstreamPath.split('?')[0]);
     const upstream = http.request(`${backendOrigin}${upstreamPath}`, { method: req.method, headers }, (up) => {
       res.writeHead(up.statusCode || 502, up.headers);
+      // se lee la cola de la respuesta para contar tokens (el último fragmento trae el uso)
+      let tail = '';
+      if (isChat) up.on('data', (d) => { tail = (tail + d.toString('utf8')).slice(-8192); });
       up.pipe(res);
-      up.on('end', () => log(up.statusCode));
+      up.on('end', () => {
+        if (isChat && up.statusCode < 400) serveUsage.add(ip, usageFromTail(tail));
+        log(up.statusCode);
+      });
     });
     upstream.on('error', (e) => {
       if (!res.headersSent) res.writeHead(502, { 'Content-Type': 'application/json' });

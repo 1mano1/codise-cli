@@ -18,6 +18,7 @@ import { Checkpoints } from './session.js';
 import { formatTokens, formatDuration } from './util/fs.js';
 import { setLanguage, L } from './i18n.js';
 import { localEngine } from './local/engine.js';
+import { recordUsage, estimateCost } from './usage.js';
 
 export class Runtime {
   constructor({ cwd = process.cwd(), overrides = {} } = {}) {
@@ -143,11 +144,18 @@ export class Runtime {
     this.usage.output += usage.output || 0;
     this.usage.cached = (this.usage.cached || 0) + (usage.cached || 0);
     const key = `${client.providerName}:${client.model}`;
-    const u = (this.usage.byModel[key] ||= { input: 0, output: 0, requests: 0, ms: 0 });
+    const u = (this.usage.byModel[key] ||= { input: 0, output: 0, requests: 0, ms: 0, cost: 0 });
     u.input += usage.input || 0;
     u.output += usage.output || 0;
     u.requests++;
     u.ms += usage.evalDurationNs ? usage.evalDurationNs / 1e6 : ms || 0;
+    // costo: el real si el proveedor lo informa (OpenRouter) o el estimado con settings.pricing
+    const cost = usage.cost ?? estimateCost(this.settings.pricing, client.providerName, client.model, usage);
+    if (cost != null) { u.cost += cost; this.usage.cost = (this.usage.cost || 0) + cost; }
+    const info = client.provider || {};
+    recordUsage({ provider: client.providerName, model: client.model, usage, cost, kind: info.type === 'codice' ? 'remota' : info.cloud ? 'nube' : 'local' });
+    const rl = client.current?.lastRateLimits ?? client.lastRateLimits;
+    if (rl) (this.rateLimits ||= {})[client.providerName] = rl;
   }
 
   // ── Herramientas y extensiones ─────────────────────────────────

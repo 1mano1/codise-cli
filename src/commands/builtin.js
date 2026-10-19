@@ -16,6 +16,7 @@ import { formatTokens, formatDuration, relPath } from '../util/fs.js';
 import { stripThinking } from '../llm/stream.js';
 import { L } from '../i18n.js';
 import { customizeCommands } from './customize.js';
+import { usageTotals, providerBalance, BILLING_URLS } from '../usage.js';
 
 const fmtSize = (b) => (b ? `${(b / 1e9).toFixed(1)} GB` : '');
 
@@ -372,7 +373,7 @@ export const BUILTIN_COMMANDS = {
 
   cost: {
     get description() { return L('Tokens usados, velocidad y costo', 'Tokens used, speed and cost'); },
-    aliases: ['usage', 'stats'],
+    aliases: ['stats'],
     async run(a, { runtime }) {
       const u = runtime.usage;
       ui.println(`${c.primary(L('Sesión', 'Session'), { bold: true })}  ${c.muted(`${u.requests} ${L('peticiones', 'requests')} · ${L('entrada', 'input')} ${formatTokens(u.input)} · ${L('salida', 'output')} ${formatTokens(u.output)} · ${formatDuration(u.ms)}`)}`);
@@ -387,6 +388,54 @@ export const BUILTIN_COMMANDS = {
         `Why is input large? Each request re-sends the instructions and the conversation (the model has no memory between requests), and each tool step is a request. ${runtime.isLean() ? 'Lean mode on: trimmed instructions.' : 'Enable lean mode in /config to reduce it.'}`,
       ));
       ui.hint(cloud ? L('Proveedor en la nube: revisa la tarifa de tu proveedor.', 'Cloud provider: check your provider pricing.') : L('Modelo local o PC propia: costo de nube $0 (solo tiempo de cómputo).', 'Local model or your own PC: $0 cloud cost (compute time only).'));
+    },
+  },
+
+  usage: {
+    get description() { return L('Consumo y saldo: sesión, hoy, mes y proveedor', 'Usage and balance: session, today, month and provider'); },
+    argumentHint: '[today|month|all]',
+    async run(a, { runtime }) {
+      const money = (n) => (n >= 1 ? `${n.toFixed(2)}` : `${n.toFixed(4)}`);
+      const line = (t) => `${t.requests} ${L('peticiones', 'requests')} · ${L('entrada', 'input')} ${formatTokens(t.input)}${t.cached ? ` (${formatTokens(t.cached)} ${L('en caché', 'cached')})` : ''} · ${L('salida', 'output')} ${formatTokens(t.output)}${t.cost ? ` · ${money(t.cost)}` : ''}`;
+      const head = (t) => ui.println(c.primary(t, { bold: true }));
+      const u = runtime.usage;
+      head(L('Esta sesión', 'This session'));
+      ui.println(`  ${c.muted(line({ ...u, cached: u.cached || 0, cost: u.cost || 0 }))}`);
+      const ranges = a.trim() ? [a.trim()] : ['today', 'month'];
+      const titles = { today: L('Hoy', 'Today'), month: L('Este mes', 'This month'), all: L('Todo el histórico', 'All time') };
+      const kinds = { local: L('local', 'local'), nube: L('nube', 'cloud'), remota: L('tu PC', 'your PC') };
+      for (const r of ranges) {
+        if (!titles[r]) return ui.hint(L('Uso: /usage [today|month|all]', 'Usage: /usage [today|month|all]'));
+        const totals = Object.entries(usageTotals(r));
+        head(titles[r]);
+        if (!totals.length) { ui.println(`  ${c.muted(L('sin consumo registrado', 'no usage recorded'))}`); continue; }
+        for (const [key, t] of totals.sort((x, y) => y[1].input + y[1].output - (x[1].input + x[1].output))) {
+          ui.println(`  ${c.soft(key)} ${c.dim(`[${kinds[t.kind] || t.kind}]`)}`);
+          ui.println(`    ${c.muted(line(t))}`);
+        }
+      }
+      const info = runtime.providerInfo();
+      if (info) {
+        head(`${L('Proveedor', 'Provider')}: ${info.label || info.name}`);
+        const b = await providerBalance(info);
+        if (b?.error) ui.println(`  ${c.warning(L(`No pude consultar el saldo (${b.error}).`, `Could not fetch the balance (${b.error}).`))}`);
+        else if (b?.kind === 'credits') ui.println(`  ${c.muted(`${L('usado', 'used')} ${money(b.used || 0)}${b.limit != null ? ` · ${L('límite', 'limit')} ${money(b.limit)} · ${L('quedan', 'left')} ${money(b.remaining ?? b.limit - (b.used || 0))}` : ` · ${L('sin límite configurado', 'no limit set')}`}${b.freeTier ? ` · ${L('nivel gratuito', 'free tier')}` : ''}`)}`);
+        else if (b?.kind === 'balance') ui.println(`  ${c.muted(`${L('saldo', 'balance')} ${b.remaining} ${b.currency}${b.available === false ? ` · ${L('sin saldo disponible', 'not available')}` : ''}`)}`);
+        else if (b?.kind === 'server') {
+          ui.println(`  ${c.muted(`${b.host} · ${L('hoy', 'today')}: ${line(b.today)}`)}`);
+          ui.println(`  ${c.muted(`${L('mes', 'month')}: ${line(b.month)} · ${L('total', 'total')}: ${line(b.total)}`)}`);
+          const clients = Object.keys(b.clients || {}).length;
+          if (clients) ui.println(`  ${c.dim(L(`${clients} equipo(s) conectados desde ${new Date(b.since).toLocaleDateString()}`, `${clients} device(s) connected since ${new Date(b.since).toLocaleDateString()}`))}`);
+        } else if (!info.cloud) ui.println(`  ${c.muted(L('Modelo local: sin costo de nube.', 'Local model: no cloud cost.'))}`);
+        const rl = runtime.rateLimits?.[info.name];
+        for (const k of ['requests', 'tokens']) {
+          const x = rl?.[k];
+          if (x) ui.println(`  ${c.muted(`${L('límite de', 'rate limit')} ${k === 'requests' ? L('peticiones', 'requests') : 'tokens'}: ${L('quedan', 'left')} ${formatTokens(x.remaining)}${x.limit ? ` / ${formatTokens(x.limit)}` : ''}${x.reset ? ` · ${L('se reinicia', 'resets')} ${x.reset}` : ''}`)}`);
+        }
+        const url = BILLING_URLS[info.name];
+        if (url && !b) ui.hint(L(`Este proveedor no da el saldo por API. Revísalo en ${url}`, `This provider does not expose the balance via API. Check ${url}`));
+        if (info.cloud && !u.cost && !runtime.settings.pricing) ui.hint(L('Para estimar el costo agrega precios en settings.pricing, p. ej. {"modelo": {"input": 3, "output": 15}} (USD por millón de tokens).', 'To estimate cost add prices in settings.pricing, e.g. {"model": {"input": 3, "output": 15}} (USD per million tokens).'));
+      }
     },
   },
 
