@@ -16,8 +16,13 @@ const OUTPUT_STYLES = {
 function envBlock(runtime, model) {
   const isGit = fs.existsSync(path.join(runtime.projectRoot, '.git'));
   const sb = runtime.settings.sandbox?.mode && runtime.settings.sandbox.mode !== 'off' ? sandboxStatus(runtime.settings) : null;
-  let shellLine = `- Platform: ${process.platform}; shell used by the Bash tool: ${shellLabel(detectShell(runtime.settings))}`;
+  const shellName = shellLabel(detectShell(runtime.settings));
+  let shellLine = `- Platform: ${process.platform}; shell used by the Bash tool: ${shellName}`;
   if (sb?.active && sb.engine.name === 'docker') shellLine = `- Platform: ${process.platform}, but the Bash tool runs inside a Linux container (sh) with the project mounted at /workspace`;
+  // ayuda específica de Windows: evitar los problemas de correr PowerShell con comillas desde Git Bash
+  else if (process.platform === 'win32' && shellName === 'bash') {
+    shellLine += '\n- The Bash tool runs Git Bash. Prefer bash-native commands (curl, tar, unzip, ls, grep). To run non-trivial PowerShell, write a .ps1 file with Write and run it as `powershell -NoProfile -ExecutionPolicy Bypass -File script.ps1` — do NOT use inline `powershell -Command "…"` with quotes or `$_`, the quoting breaks through Git Bash. A program installed during this session is picked up automatically (PATH is refreshed), so just call it by name.';
+  }
   const sbLine = sb?.active ? `\n- Bash commands run in a sandbox: they can only write inside the project and a temp folder, and ${sb.allowedDomains.length ? `network access is limited to ${sb.allowedDomains.join(', ')}` : 'have no network access'}. If something is blocked, the user decides; do not try to work around it.` : '';
   return `# Environment
 - Working directory: ${runtime.cwd}

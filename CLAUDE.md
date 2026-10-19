@@ -536,3 +536,15 @@ faltaba, 17 min en un turno con puros errores). Mejoras genéricas:
   mismo resultado con una nota de "ya lo consultaste, no lo repitas" y no vuelve a la red.
 - Prompt: reglas de ser decidido (usar lo ya encontrado, no repetir, una solución a la vez) y saber cuándo parar
   y pedir ayuda (programa faltante, admin, login, decisión del usuario).
+
+## Shell de Windows más robusto (rama `feat/windows-shell-robustness`)
+
+Dos bloqueos genéricos que el usuario documentó al ver al agente atascarse en Windows:
+- **Programas recién instalados no se veían** (el PATH de Códice se fija al arrancar). `freshWindowsPath()` en
+  `bash.js` relee el PATH del registro (HKCU y HKLM Environment, expandiendo %VARS%) y suma carpetas comunes
+  (WinGet\Links, WindowsApps, 7-Zip, Git\cmd, nodejs, chocolatey\bin, Python…) que existan; caché de 10 s. En
+  Windows (fuera del sandbox) el Bash tool arranca con ese PATH, así que un programa instalado en la sesión se
+  encuentra por nombre sin reiniciar Códice.
+- **PowerShell inline desde Git Bash rompía las comillas/`$_`**. Regla en el prompt (solo Windows + Git Bash):
+  preferir comandos bash; para PowerShell no trivial, escribir un `.ps1` y correrlo con
+  `powershell -NoProfile -ExecutionPolicy Bypass -File script.ps1`, no `-Command "…"` inline.

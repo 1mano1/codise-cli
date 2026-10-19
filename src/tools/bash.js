@@ -50,6 +50,55 @@ function killTree(child) {
   }
 }
 
+// ── PATH fresco en Windows ───────────────────────────────────────
+// Expande %VARIABLES% de un valor del registro usando el entorno actual.
+function expandWinVars(s) {
+  return String(s).replace(/%([^%]+)%/g, (m, name) => process.env[name] ?? m);
+}
+
+function registryPath(root, key) {
+  try {
+    const r = spawnSync('reg', ['query', `${root}\\${key}`, '/v', 'Path'], { encoding: 'utf8', windowsHide: true, timeout: 4000 });
+    if (r.status !== 0) return '';
+    const m = r.stdout.match(/\bPath\s+REG_(?:EXPAND_)?SZ\s+(.+)/i);
+    return m ? expandWinVars(m[1].trim()) : '';
+  } catch { return ''; }
+}
+
+// Carpetas de instalación comunes que a veces no quedan en el PATH (winget shims, 7-Zip, Git, Node, Python…).
+function commonWinDirs() {
+  const pf = process.env.ProgramFiles || 'C:\\Program Files';
+  const pf86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const la = process.env.LOCALAPPDATA || '';
+  const pd = process.env.ProgramData || 'C:\\ProgramData';
+  const dirs = [
+    la && `${la}\\Microsoft\\WinGet\\Links`, // shims de winget (lo más importante)
+    la && `${la}\\Microsoft\\WindowsApps`,
+    `${pf}\\7-Zip`, `${pf86}\\7-Zip`,
+    `${pf}\\Git\\cmd`, `${pf}\\nodejs`,
+    `${pd}\\chocolatey\\bin`,
+  ].filter(Boolean);
+  // Python suele instalarse con versión en la ruta: se añaden las que existan
+  if (la) for (const d of (() => { try { return fs.readdirSync(`${la}\\Programs\\Python`); } catch { return []; } })()) {
+    dirs.push(`${la}\\Programs\\Python\\${d}`, `${la}\\Programs\\Python\\${d}\\Scripts`);
+  }
+  return dirs.filter((d) => { try { return fs.existsSync(d); } catch { return false; } });
+}
+
+let pathCache = { at: 0, value: '' };
+export function freshWindowsPath() {
+  if (Date.now() - pathCache.at < 10000 && pathCache.value) return pathCache.value; // caché de 10 s
+  const parts = [];
+  const seen = new Set();
+  const add = (p) => { for (const d of String(p || '').split(';')) { const t = d.trim(); const k = t.toLowerCase(); if (t && !seen.has(k)) { seen.add(k); parts.push(t); } } };
+  add(process.env.PATH); // lo que ya tiene el proceso
+  add(registryPath('HKCU', 'Environment')); // PATH de usuario actualizado
+  add(registryPath('HKLM', 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment')); // PATH del sistema
+  for (const d of commonWinDirs()) add(d);
+  pathCache = { at: Date.now(), value: parts.join(';') };
+  return pathCache.value;
+}
+
 // sandbox: { status, projectRoot, onStatus } para ejecutar el comando encerrado (ver src/sandbox.js).
 export async function runShell(command, { cwd, timeout = 120000, signal, shell, env, sandbox = null } = {}) {
   const sh = shell || detectShell();
@@ -63,10 +112,13 @@ export async function runShell(command, { cwd, timeout = 120000, signal, shell, 
       return { code: -1, output: L(`No se pudo preparar el sandbox: ${e.message}`, `Could not prepare the sandbox: ${e.message}`), killed: null };
     }
   }
+  // Windows: el PATH de Códice se fijó al arrancar; si el usuario instaló algo durante la sesión (p. ej. 7-Zip),
+  // el PATH del registro ya lo incluye pero el proceso no. Se refresca para que esos programas se encuentren.
+  const basePath = process.platform === 'win32' && !sandbox ? { PATH: freshWindowsPath() } : {};
   return new Promise((resolve) => {
     const child = spawn(file, args, {
       cwd,
-      env: { ...process.env, CODICE: '1', ...env, ...extraEnv },
+      env: { ...process.env, ...basePath, CODICE: '1', ...env, ...extraEnv },
       windowsHide: true,
       detached: process.platform !== 'win32',
     });
