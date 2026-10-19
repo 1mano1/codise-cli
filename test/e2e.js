@@ -130,6 +130,29 @@ export async function e2eTests(t) {
       assert(/✻ Listo · .*2 herramientas/.test(r.stdout), `línea de cierre: ${r.stdout.slice(-400)}`);
     });
 
+    await t('/provider add: acepta la clave directa o una variable, y prueba la conexión al momento', async (assert) => {
+      const pHome = path.join(work, '.home-provider');
+      fs.mkdirSync(pHome, { recursive: true });
+      fs.writeFileSync(path.join(pHome, 'settings.json'), JSON.stringify({ onboarded: true }));
+      m.requireKey = 'sk-local-abc123';
+      try {
+        const input = [
+          `/provider add pc ${m.url}/v1 openai sk-local-abc123`,
+          `/provider add mala ${m.url}/v1 openai sk-local-equivocada`,
+          `/provider add var ${m.url}/v1 openai CLAVE_QUE_NO_EXISTE`,
+          `/provider add sintipo ${m.url}/v1/ sk-local-abc123`,
+          '/exit', '',
+        ].join('\n');
+        const r = await runCli([], { cwd, home: pHome, input });
+        const cfg = JSON.parse(fs.readFileSync(path.join(pHome, 'settings.json'), 'utf8'));
+        assert(cfg.providers.pc.apiKey === 'sk-local-abc123' && !cfg.providers.pc.apiKeyEnv, 'clave directa guardada como apiKey');
+        assert(/pc añadido y conectado · 2 modelo/.test(r.stdout), `conecta al momento: ${r.stdout}`);
+        assert(/mala guardado, pero no respondió: la clave no es correcta/.test(r.stdout), 'avisa si la clave es incorrecta');
+        assert(cfg.providers.var.apiKeyEnv === 'CLAVE_QUE_NO_EXISTE' && /La variable CLAVE_QUE_NO_EXISTE no existe/.test(r.stdout), 'nombre de variable y aviso si no existe');
+        assert(cfg.providers.sintipo.type === 'openai' && cfg.providers.sintipo.apiKey === 'sk-local-abc123' && !cfg.providers.sintipo.baseUrl.endsWith('/'), 'sin tipo: el tercer dato es la clave');
+      } finally { m.requireKey = null; }
+    });
+
     await t('compactación: /compact, respaldo sin modelo y automática al llenarse', async (assert) => {
       // manual: el resumen sustituye la conversación y conserva las tareas y archivos
       m.push({ content: 'Primera respuesta.' }, { content: '1. Primary request: probar la compactación.' }, { content: 'Sigo.' });

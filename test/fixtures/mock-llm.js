@@ -18,6 +18,8 @@ export function startMockLLM({ script = [], models = ['mock-coder:7b', 'mock-sma
     const raw = buf.toString('utf8');
     const body = raw ? JSON.parse(raw) : null;
     requests.push({ method: req.method, url: req.url, headers: req.headers, body, bytes: parts.reduce((n, c) => n + c.length, 0) });
+    // mock.requireKey = 'clave' imita a llama-server con --api-key
+    if (api.requireKey && req.headers.authorization !== `Bearer ${api.requireKey}`) { res.writeHead(401, { 'Content-Type': 'application/json' }); return res.end('{"error":{"message":"Invalid API Key"}}'); }
 
     if (req.url === '/v1/models') return json(res, { data: models.map((id) => ({ id })) });
     if (req.url === '/api/tags') return json(res, { models: models.map((name) => ({ name, size: 1e9 })) });

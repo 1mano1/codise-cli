@@ -430,3 +430,12 @@ Problemas reportados al probarla y solución:
   herramientas, se le pide que lo haga (máx. 2 por turno).
 - Read/Edit con archivo inexistente sugieren archivos con el mismo nombre en el proyecto y en ~/.codice
   (`findSimilar`), o piden usar Glob antes de preguntar. El prompt dice dónde viven los archivos de Códice.
+
+## /provider add con clave directa (rama `fix/provider-add-key`)
+
+- `/provider add <nombre> <url> [tipo] [CLAVE | VARIABLE]`: si el último dato es MAYÚSCULAS_CON_GUIONES es el
+  nombre de una variable de entorno (`apiKeyEnv`); si no, es la clave (`apiKey`, en ~/.codice/settings.json).
+  Si se omite el tipo, el tercer dato es la clave. Prueba la conexión al guardar y avisa si la clave falla o la
+  variable no existe. El error 401 explica cuál de los dos casos es.
+- Ejemplo real: llama-server.exe con `--host 0.0.0.0 --api-key …` en otra PC →
+  `/provider add pc http://192.168.1.69:8081/v1 openai sk-local-…`.
