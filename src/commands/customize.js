@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { HOME } from '../config.js';
 import { c, style, allThemes, setTheme, currentTheme, validateContrast, TOKENS } from '../ui/theme.js';
-import { renderMascot, saveCustomMascot, validateMascot, loadMascots, resolveMascot } from '../ui/mascot.js';
+import { renderMascot, saveCustomMascot, validateMascot, loadMascots, resolveMascot, mascotErrors } from '../ui/mascot.js';
 import * as ui from '../ui/output.js';
 import { select } from '../ui/select.js';
 import { liveActive } from '../ui/live.js';
@@ -98,9 +98,11 @@ async function mascotCommand(args, ctx) {
     options,
     initial: Math.max(0, options.findIndex((o) => o.value === current?.id)),
     extra: (opt) => {
-      if (!opt.mascot) return [];
+      // mascotas propias con errores: se dice cuáles y por qué (si no, simplemente "desaparecen")
+      const broken = Object.entries(mascotErrors).map(([id, err]) => c.warning(`  ⚠ ${id}: ${err}`));
+      if (!opt.mascot) return broken.length ? ['', ...broken] : [];
       const verbs = (opt.mascot.verbs || []).slice(0, 3).join(' · ');
-      return ['', ...renderMascot(opt.mascot).map((l) => `    ${l}`), verbs ? `    ${c.soft(verbs, { italic: true })}` : ''];
+      return ['', ...renderMascot(opt.mascot).map((l) => `    ${l}`), verbs ? `    ${c.soft(verbs, { italic: true })}` : '', ...broken];
     },
     erase: true,
   });
@@ -207,7 +209,8 @@ async function configPanel(ctx) {
       { key: 'theme', label: L('Tema', 'Theme'), value: runtime.themeName() },
       { key: 'mascot', label: L('Mascota', 'Mascot'), value: runtime.mascot()?.name || L('ninguna', 'none') },
       { key: 'outputStyle', label: L('Estilo de respuesta', 'Response style'), value: s.outputStyle },
-      { key: 'showThinking', label: L('Mostrar pensamiento', 'Show thinking'), value: yes(s.showThinking) },
+      { key: 'thinking', label: L('Pensamiento del modelo', 'Model thinking'), value: s.thinking === false ? L('apagado (más rápido)', 'off (faster)') : L('encendido', 'on') },
+      { key: 'showThinking', label: L('Mostrar pensamiento completo', 'Show full thinking'), value: yes(s.showThinking) },
       { key: 'permissions.mode', label: L('Modo de permisos inicial', 'Default permission mode'), value: s.permissions?.mode || 'default' },
       { key: 'spinnerVerbs', label: L('Verbos del spinner', 'Spinner verbs'), value: s.spinnerVerbs?.length ? s.spinnerVerbs.join(', ') : L('los de la mascota', "the mascot's") },
       { key: 'autoCompact', label: L('Autocompactar contexto', 'Auto-compact context'), value: s.autoCompact ? `${Math.round(s.autoCompact * 100)} %` : 'no' },
@@ -233,6 +236,7 @@ async function configPanel(ctx) {
       case 'accessibility': await accessibilityCommand('', ctx); break;
       case 'lean': runtime.save('lean', s.lean === true ? false : s.lean === false ? 'auto' : true, scope); break; // sí → no → auto
       case 'showThinking': case 'notifications': case 'offline': toggle(key, s[key]); break;
+      case 'thinking': runtime.save('thinking', s.thinking === false ? true : false, scope); break;
       case 'spinnerVerbs': {
         const v = await repl.input.question(`${c.accent('›')} ${L('Verbos separados por coma (vacío = los de la mascota)', 'Comma-separated verbs (empty = mascot verbs)')}: `);
         runtime.save(key, v?.trim() ? v.split(',').map((x) => x.trim()).filter(Boolean).map((x) => (x.endsWith('…') ? x : `${x}…`)) : [], scope);

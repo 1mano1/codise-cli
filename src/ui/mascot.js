@@ -6,16 +6,36 @@ import { readJSON, writeJSON, listDirs } from '../util/fs.js';
 import { style, colorLevel, currentTheme } from './theme.js';
 import { L } from '../i18n.js';
 
+// Corrige los errores comunes al dibujar a mano (o al hacerlo un modelo): espacios en vez de ".", filas de
+// distinto largo y columnas vacías a los lados.
+export function normalizeMascot(m) {
+  if (!m || !Array.isArray(m.pixels)) return m;
+  let rows = m.pixels.map((r) => String(r).replace(/ /g, '.'));
+  const w = Math.max(...rows.map((r) => r.length));
+  rows = rows.map((r) => r.padEnd(w, '.'));
+  // quita filas y columnas totalmente transparentes en los bordes
+  while (rows.length > 1 && /^\.*$/.test(rows[0])) rows.shift();
+  while (rows.length > 1 && /^\.*$/.test(rows.at(-1))) rows.pop();
+  const lead = Math.min(...rows.map((r) => r.match(/^\.*/)[0].length));
+  const trail = Math.min(...rows.map((r) => r.match(/\.*$/)[0].length));
+  rows = rows.map((r) => r.slice(lead, r.length - trail || undefined));
+  return { ...m, pixels: rows };
+}
+
+export const mascotErrors = {}; // mascotas propias que no se pudieron cargar → motivo
+
 export function loadMascots() {
   const builtin = readJSON(path.join(ROOT, 'design', 'mascots.json'), {});
   delete builtin.$comment;
   const out = {};
   for (const [id, m] of Object.entries(builtin)) out[id] = { ...m, id, builtin: true };
   const dir = path.join(HOME, 'mascots');
+  for (const k of Object.keys(mascotErrors)) delete mascotErrors[k];
   for (const d of listDirs(dir)) {
-    const m = readJSON(path.join(dir, d, 'mascot.json'));
+    const m = normalizeMascot(readJSON(path.join(dir, d, 'mascot.json')));
     const err = validateMascot(m);
     if (!err) out[d] = { ...m, id: d, custom: true };
+    else mascotErrors[d] = err;
   }
   return out;
 }

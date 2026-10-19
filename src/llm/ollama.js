@@ -10,8 +10,9 @@ function safeParse(s) {
 }
 
 export class OllamaClient {
-  constructor({ baseUrl, model, temperature = 0.2, contextWindow = 16384, maxTokens = 0, headers = {}, apiKey, label = 'Ollama', gzip = false }) {
+  constructor({ baseUrl, model, temperature = 0.2, contextWindow = 16384, maxTokens = 0, headers = {}, apiKey, label = 'Ollama', gzip = false, thinking }) {
     this.gzip = gzip;
+    this.thinking = thinking;
     this.baseUrl = baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
     this.model = model;
     this.temperature = temperature;
@@ -61,6 +62,7 @@ export class OllamaClient {
     const mt = maxTokens || this.maxTokens;
     if (mt) options.num_predict = mt;
     const body = { model: this.model, messages: this.toOllama(messages), stream: true, options };
+    if (this.thinking === false) body.think = false;
     if (tools?.length) body.tools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
     const res = await postJSON(`${this.baseUrl}/api/chat`, { headers: this.headers(), body, signal, gzip: this.gzip }, this.label);
     if (!res.ok) {

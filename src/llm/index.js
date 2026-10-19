@@ -20,6 +20,9 @@ function baseOpts(settings, provider, model) {
     headers: provider.headers || {},
     label: provider.label || provider.name,
     gzip: wantsGzip(settings, provider),
+    // thinking: false apaga el razonamiento en modelos que lo permiten (Qwen3, DeepSeek-R1…). Solo en servidores
+    // propios: las APIs en la nube rechazan parámetros desconocidos.
+    thinking: provider.cloud ? undefined : (provider.thinking ?? settings.thinking),
   };
 }
 

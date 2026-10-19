@@ -48,7 +48,7 @@ export const DEFAULTS = {
   onboarded: false,
   spinnerVerbs: [],
   outputStyle: 'normal',
-  showThinking: true,
+  showThinking: false,
   statusLine: {},
   accessibility: { screenReader: false, reduceMotion: false, noColor: false },
   autoCompact: 0.85,
