@@ -62,6 +62,27 @@ export async function uiTests(t) {
     assert(shots.inicio.split('\n').length >= 34, 'la zona viva se empuja al último renglón de la terminal');
   });
 
+  await t('consola v2: bienvenida arriba, caja abajo y la caja no se mueve al encogerse', async (assert) => {
+    const v = shots.inicioView;
+    assert(v.slice(0, 3).some((l) => l.startsWith('╭')), `bienvenida en la parte de arriba: ${v.slice(0, 4).join(' | ')}`);
+    assert(v.at(-1).includes('shift+tab') && v.at(-2).startsWith('╰'), 'caja y estado en los últimos renglones');
+    assert(v.slice(10, 25).every((l) => !l.trim()), 'hueco en blanco entre la bienvenida y la caja');
+    // tras un diálogo y una caja de varias líneas (la zona crece y se encoge), la caja sigue en el fondo
+    for (const [name, view] of [['final', shots.finalView], ['streamFin', shots.streamFinView], ['angosta', shots.angostaView]]) {
+      assert(view.at(-1).includes('shift+tab') && view.at(-2).startsWith('╰'), `${name}: la caja quedó fuera del fondo: ${view.slice(-4).join(' | ')}`);
+    }
+  });
+
+  await t('consola v2: /usage se abre en un panel que se cierra con esc', async (assert) => {
+    const p = shots.panel || [];
+    const top = p.findIndex((l) => l.includes('╭─ /usage'));
+    assert(top > 0 && p.some((l) => l.includes('Esta sesión')), `panel con título y contenido: ${p.join('\n')}`);
+    assert(p.at(-1).includes('shift+tab'), 'la caja y el estado siguen al fondo con el panel abierto');
+    const closed = shots.panelCerrado || [];
+    assert(!closed.some((l) => l.includes('Esta sesión') || l.includes('esc cerrar')), 'al cerrar no queda en la conversación');
+    assert(closed.at(-1).includes('shift+tab') && closed.at(-2).startsWith('╰'), 'la caja vuelve a su lugar');
+  });
+
   await t('consola v2: el texto aparece mientras llega (no de golpe)', async (assert) => {
     assert(shots.streaming.includes('Este es un') && !shots.streaming.includes('fluida.'), 'se ve el texto a medias mientras llega');
     assert(shots.streamFin.includes('se ve fluida.'), 'el texto termina completo');

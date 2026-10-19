@@ -27,6 +27,7 @@ function openInEditor(file) {
 
 export const BUILTIN_COMMANDS = {
   help: {
+    panel: true,
     get description() { return L('Muestra los comandos y atajos', 'Show commands and shortcuts'); },
     async run(args, { runtime, repl }) {
       ui.println(c.accent(L('Comandos', 'Commands'), { bold: true }));
@@ -181,6 +182,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   tools: {
+    panel: true,
     get description() { return L('Lista las herramientas disponibles', 'List available tools'); },
     async run(a, { repl }) {
       for (const t of repl.agent.tools()) {
@@ -254,6 +256,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   skills: {
+    panel: true,
     get description() { return L('Lista las skills instaladas', 'List installed skills'); },
     async run(a, { runtime }) {
       const list = Object.values(runtime.skills);
@@ -306,6 +309,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   commands: {
+    panel: true,
     get description() { return L('Lista los comandos personalizados', 'List custom commands'); },
     async run(a, { runtime }) {
       const list = Object.values(runtime.commands);
@@ -359,6 +363,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   context: {
+    panel: true,
     get description() { return L('Uso estimado del contexto', 'Estimated context usage'); },
     async run(a, { repl }) {
       const u = repl.agent.contextUsage();
@@ -370,6 +375,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   cost: {
+    panel: true,
     get description() { return L('Tokens usados, velocidad y costo', 'Tokens used, speed and cost'); },
     aliases: ['stats'],
     async run(a, { runtime }) {
@@ -390,6 +396,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   usage: {
+    panel: true,
     get description() { return L('Consumo y saldo: sesión, hoy, mes y proveedor', 'Usage and balance: session, today, month and provider'); },
     argumentHint: '[today|month|all]',
     async run(a, { runtime }) {
@@ -464,6 +471,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   todos: {
+    panel: true,
     get description() { return L('Muestra la lista de tareas actual', 'Show the current task list'); },
     async run(a, { runtime }) {
       if (!runtime.todos.length) return ui.hint(L('No hay tareas.', 'No tasks.'));
@@ -519,6 +527,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   doctor: {
+    panel: true,
     get description() { return L('Diagnostica la instalación y la conexión', 'Diagnose installation and connection'); },
     async run(a, { runtime }) {
       const ok = (t) => ui.println(`  ${c.success('✓')} ${t}`);
@@ -547,6 +556,7 @@ export const BUILTIN_COMMANDS = {
   },
 
   status: {
+    panel: true,
     get description() { return L('Resumen de la sesión actual', 'Current session summary'); },
     async run(a, { runtime, repl }) {
       ui.println(runtime.statusLine(repl.agent));

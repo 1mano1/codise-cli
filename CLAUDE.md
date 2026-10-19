@@ -354,3 +354,15 @@ Problemas reportados al probarla y solución:
 - Tras el resumen se agregan la lista de tareas y los archivos leídos/editados, para no perder el estado.
 - Si el modelo falla al resumir, se compacta sin él (pedidos del usuario y últimos mensajes).
 - La barra de estado muestra "N % para autocompactar" cuando faltan 15 puntos o menos.
+
+## Diseño de la consola: bienvenida arriba, caja abajo, paneles (rama `fix/console-layout`)
+
+- `live.js` lleva `contentRow` (renglón donde termina la conversación). La conversación crece desde arriba y la
+  caja + barra de estado van en los últimos renglones; entre ambas hay un hueco en blanco dentro de la zona viva.
+  El texto en curso y el spinner van pegados a la conversación; los diálogos, pegados a la caja.
+- Arreglo: al encogerse la zona (se cierra un diálogo, la caja pierde líneas) la caja ya no se sube; antes solo se
+  corregía al redimensionar.
+- Comandos informativos (`panel: true`: help, usage, cost, context, status, doctor, tools, skills, commands, todos)
+  se muestran en un panel encima de la caja (`showPanel` en `select.js`, salida capturada con `captureOutput`);
+  esc lo cierra y no queda en la conversación; ↑↓/PgUp/PgDn desplazan. Con lector de pantalla se imprimen.
+- La terminal virtual de pruebas (`test/fixtures/vt.js`) ahora tiene ventana visible e historial (`viewport()`).
