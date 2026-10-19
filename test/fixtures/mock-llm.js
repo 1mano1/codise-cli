@@ -1,15 +1,23 @@
 // Servidor falso compatible con OpenAI (/v1) y Ollama (/api) que responde según un guion.
 import http from 'node:http';
+import zlib from 'node:zlib';
 
 // script: [{ content, reasoning, toolCalls: [{ name, args }], error: { status, body } }]
 export function startMockLLM({ script = [], models = ['mock-coder:7b', 'mock-small:1b'] } = {}) {
   const requests = [];
   const queue = [...script];
+  const api = { rejectGzip: false };
   const server = http.createServer(async (req, res) => {
-    let raw = '';
-    for await (const ch of req) raw += ch;
+    const parts = [];
+    for await (const ch of req) parts.push(ch);
+    let buf = Buffer.concat(parts);
+    const gzipped = /gzip/.test(req.headers['content-encoding'] || '');
+    // mock.rejectGzip = true imita a un servidor que no acepta cuerpos comprimidos
+    if (gzipped && api.rejectGzip) { requests.push({ method: req.method, url: req.url, headers: req.headers, body: null, rejected: true }); res.writeHead(415); return res.end('unsupported content-encoding'); }
+    if (gzipped) buf = zlib.gunzipSync(buf);
+    const raw = buf.toString('utf8');
     const body = raw ? JSON.parse(raw) : null;
-    requests.push({ method: req.method, url: req.url, headers: req.headers, body });
+    requests.push({ method: req.method, url: req.url, headers: req.headers, body, bytes: parts.reduce((n, c) => n + c.length, 0) });
 
     if (req.url === '/v1/models') return json(res, { data: models.map((id) => ({ id })) });
     if (req.url === '/api/tags') return json(res, { models: models.map((name) => ({ name, size: 1e9 })) });
@@ -49,12 +57,12 @@ export function startMockLLM({ script = [], models = ['mock-coder:7b', 'mock-sma
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address();
-      resolve({
+      resolve(Object.assign(api, {
         url: `http://127.0.0.1:${port}`,
         requests,
         push: (...steps) => queue.push(...steps),
         close: () => new Promise((r) => server.close(r)),
-      });
+      }));
     });
   });
 }

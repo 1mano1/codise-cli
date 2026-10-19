@@ -2,6 +2,7 @@
 import { sse } from './stream.js';
 import { L } from '../i18n.js';
 import { parseRateLimits } from '../usage.js';
+import { postJSON } from './compress.js';
 
 export class LLMError extends Error {
   constructor(message, { status = 0, body = '', network = false, toolsUnsupported = false } = {}) {
@@ -28,7 +29,8 @@ export async function safeFetch(url, init, label) {
 }
 
 export class OpenAIClient {
-  constructor({ baseUrl, apiKey, model, temperature = 0.2, maxTokens = 0, headers = {}, label = 'el proveedor' }) {
+  constructor({ baseUrl, apiKey, model, temperature = 0.2, maxTokens = 0, headers = {}, label = 'el proveedor', gzip = false }) {
+    this.gzip = gzip;
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.apiKey = apiKey;
     this.model = model;
@@ -58,7 +60,7 @@ export class OpenAIClient {
     const mt = maxTokens || this.maxTokens;
     if (mt) body.max_tokens = mt;
     if (/openrouter\.ai/.test(this.baseUrl)) body.usage = { include: true }; // OpenRouter devuelve el costo real
-    const res = await safeFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify(body), signal }, this.label);
+    const res = await postJSON(`${this.baseUrl}/chat/completions`, { headers: this.headers(), body, signal, gzip: this.gzip }, this.label);
     this.lastRateLimits = parseRateLimits(res.headers) || this.lastRateLimits;
     if (!res.ok) {
       const text = await res.text();
@@ -73,7 +75,7 @@ export class OpenAIClient {
   }
 
   async chatWithBody(body, { signal, onText, onReasoning }) {
-    const res = await safeFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify(body), signal }, this.label);
+    const res = await postJSON(`${this.baseUrl}/chat/completions`, { headers: this.headers(), body, signal, gzip: this.gzip }, this.label);
     if (!res.ok) {
       const text = await res.text();
       throw new LLMError(`HTTP ${res.status}: ${text.slice(0, 400)}`, { status: res.status, body: text, toolsUnsupported: Boolean(body.tools) && looksLikeToolsUnsupported(res.status, text) });
